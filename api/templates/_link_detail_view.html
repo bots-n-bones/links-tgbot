@@ -1,0 +1,15 @@
+<div id="link-{{ link.id }}">
+  <h1>{{ link.title or link.url }}</h1>
+  <p><a href="/links/{{ link.id }}/visit" target="_blank" rel="noopener" class="source-url">{{ link.url }}</a></p>
+  {% if link.description %}<p>{{ link.description }}</p>{% endif %}
+  <div class="tags">
+    {% for t in link.tags %}<span class="tag" style="--tag-color: var({{ tag_color(t.name) }});">{{ t.name }}</span>{% endfor %}
+  </div>
+  <p class="card-meta">
+    {{ link.click_count }} {{ clicks_label(link.click_count) }}
+    {% if link.click_count >= 3 %}<span class="badge">Популярно</span>{% endif %}
+  </p>
+  <div class="card-actions" style="border-top: none; padding-top: 0;">
+    <button hx-get="/links/{{ link.id }}/detail-edit-form" hx-target="#link-{{ link.id }}" hx-swap="outerHTML">Редактировать</button>
+  </div>
+</div>

@@ -13,6 +13,10 @@ TOP_N_PER_TAG = (
     5  # F-73: топ-N по тегу — уже сортировка по priority_score покрывает "достаточный приоритет"
 )
 
+DAILY_TOP3_THEME = "daily-top3"
+DAILY_TOP3_WINDOW_DAYS = 7  # "новые материалы" — активность за последнюю неделю, не только за сутки
+DAILY_TOP3_LIMIT = 3
+
 COLLECTION_SYSTEM_PROMPT = (
     "Ты аналитик, который готовит для команды еженедельную подборку полезных материалов."
 )
@@ -55,6 +59,45 @@ def _format_links_block(links: list[Link]) -> str:
         f"(добавляли {link.source_count} раз, приоритет {link.priority_score:.1f})"
         for link in links
     )
+
+
+async def generate_daily_top3(*, now: datetime | None = None) -> Collection | None:
+    """Ежедневная (Celery Beat, 12:00) подборка топ-3 новых материалов —
+    среди ссылок, добавленных за последнюю неделю, по priority_score
+    (учитывает, сколько раз и сколько разных людей их кидали в Telegram).
+    Хранится как Collection с theme=DAILY_TOP3_THEME, без LLM — чисто
+    алгоритмический отбор, показывается отдельным блоком на дашборде."""
+    sessionmaker = get_sessionmaker()
+
+    period_end = now or datetime.now(UTC)
+    period_start = period_end - timedelta(days=DAILY_TOP3_WINDOW_DAYS)
+
+    async with sessionmaker() as session:
+        recent_link_ids = select(LinkSource.link_id).where(
+            LinkSource.created_at >= period_start, LinkSource.created_at < period_end
+        )
+        stmt = (
+            select(Link)
+            .where(Link.id.in_(recent_link_ids), Link.is_hidden.is_(False))
+            .order_by(Link.priority_score.desc())
+            .limit(DAILY_TOP3_LIMIT)
+        )
+        top_links = list((await session.execute(stmt)).scalars().all())
+        if not top_links:
+            return None
+
+        collection = Collection(
+            title="Топ-3 новых материала",
+            theme=DAILY_TOP3_THEME,
+            period_start=period_start.date(),
+            period_end=period_end.date(),
+            summary_md="Автоматический отбор по востребованности за последнюю неделю.",
+            link_ids=[link.id for link in top_links],
+        )
+        session.add(collection)
+        await session.commit()
+        await session.refresh(collection)
+        return collection
 
 
 async def generate_weekly_collection(*, now: datetime | None = None) -> Collection | None:

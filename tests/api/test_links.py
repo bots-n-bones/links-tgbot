@@ -140,14 +140,37 @@ async def test_get_link_detail_404(db_session):
     assert resp.status_code == 404
 
 
-async def test_update_tags_via_form(db_session):
+async def test_update_link_via_form(db_session):
     link = await _make_link(db_session, url="https://a.com", title="A", tags=["old"])
 
     with TestClient(app) as client:
-        resp = client.patch(f"/api/links/{link.id}/tags", data={"tags": "ai, design, <script>"})
+        resp = client.patch(
+            f"/api/links/{link.id}",
+            data={
+                "title": "Новый заголовок",
+                "description": "Новое описание",
+                "tags": "ai, design, <script>",
+            },
+        )
     assert resp.status_code == 200
     data = resp.json()
+    assert data["title"] == "Новый заголовок"
+    assert data["description"] == "Новое описание"
     assert set(data["tags"]) == {"ai", "design"}  # <script> отброшен allowlist'ом
+
+
+async def test_update_link_clears_title_and_description_when_blank(db_session):
+    link = await _make_link(db_session, url="https://a.com", title="A", description="desc")
+
+    with TestClient(app) as client:
+        resp = client.patch(
+            f"/api/links/{link.id}", data={"title": "", "description": "", "tags": ""}
+        )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["title"] is None
+    assert data["description"] is None
+    assert data["tags"] == []
 
 
 async def test_hide_link_excludes_from_default_list(db_session):
@@ -163,21 +186,31 @@ async def test_hide_link_excludes_from_default_list(db_session):
     assert "https://a.com" not in urls
 
 
-async def test_top_links_excludes_stale_activity(db_session):
-    await _make_link(
-        db_session, url="https://recent.com", title="Recent", priority_score=5.0, created_days_ago=1
+async def test_index_page_has_no_old_top_block(db_session):
+    with TestClient(app) as client:
+        resp = client.get("/")
+    assert resp.status_code == 200
+    assert "Сейчас в топе у команды" not in resp.text
+
+
+async def test_index_page_shows_daily_top3(db_session):
+    from db.models import Collection
+
+    link = await _make_link(db_session, url="https://top3.com", title="В топ-3", priority_score=9.0)
+    collection = Collection(
+        title="Топ-3 новых материала",
+        theme="daily-top3",
+        summary_md="Автоматический отбор.",
+        link_ids=[link.id],
     )
-    # выше приоритет, но последний source 30 дней назад — не должна попасть в топ-7д (F-55)
-    await _make_link(
-        db_session, url="https://old.com", title="Old", priority_score=9.0, created_days_ago=30
-    )
+    db_session.add(collection)
+    await db_session.commit()
 
     with TestClient(app) as client:
         resp = client.get("/")
     assert resp.status_code == 200
-    top_block = resp.text.split("Сейчас в топе у команды")[1].split("</div>")[0]
-    assert "Recent" in top_block
-    assert "Old" not in top_block
+    assert "Топ-3 новых материала" in resp.text
+    assert "В топ-3" in resp.text
 
 
 async def test_index_page_renders(db_session):
@@ -203,3 +236,105 @@ async def test_link_detail_page_404(db_session):
     with TestClient(app) as client:
         resp = client.get("/links/999999")
     assert resp.status_code == 404
+
+
+async def test_visit_link_increments_click_count_and_redirects(db_session):
+    link = await _make_link(db_session, url="https://example.com/article")
+
+    with TestClient(app, follow_redirects=False) as client:
+        resp = client.get(f"/links/{link.id}/visit")
+        assert resp.status_code == 302
+        assert resp.headers["location"] == "https://example.com/article"
+
+        detail = client.get(f"/api/links/{link.id}")
+    assert detail.json()["click_count"] == 1
+
+
+async def test_visit_link_404_for_missing_link(db_session):
+    with TestClient(app) as client:
+        resp = client.get("/links/999999/visit")
+    assert resp.status_code == 404
+
+
+async def test_popular_badge_shown_after_enough_clicks(db_session):
+    link = await _make_link(db_session, url="https://a.com", title="A")
+
+    with TestClient(app, follow_redirects=False) as client:
+        for _ in range(3):
+            client.get(f"/links/{link.id}/visit")
+        resp = client.get("/")
+    assert "Популярно" in resp.text
+
+
+async def test_similar_links_endpoint_excludes_self(db_session):
+    import hashlib
+
+    from db.models import Link, LinkStatus
+
+    vec_a = [0.0] * 1536
+    vec_a[0] = 1.0
+    link_a = Link(
+        url="https://a.com",
+        normalized_url="a.com",
+        url_hash=hashlib.sha256(b"a").hexdigest(),
+        title="A",
+        status=LinkStatus.done,
+        embedding=vec_a,
+    )
+    link_b = Link(
+        url="https://b.com",
+        normalized_url="b.com",
+        url_hash=hashlib.sha256(b"b").hexdigest(),
+        title="Похожая B",
+        status=LinkStatus.done,
+        embedding=vec_a,
+    )
+    db_session.add_all([link_a, link_b])
+    await db_session.commit()
+    await db_session.refresh(link_a)
+
+    with TestClient(app) as client:
+        resp = client.get(f"/links/{link_a.id}/similar", headers={"HX-Request": "true"})
+    assert resp.status_code == 200
+    assert "Похожая B" in resp.text
+    assert ">A<" not in resp.text
+
+
+async def test_similar_links_empty_without_embedding(db_session):
+    link = await _make_link(db_session, url="https://a.com", title="A")
+
+    with TestClient(app) as client:
+        resp = client.get(f"/links/{link.id}/similar", headers={"HX-Request": "true"})
+    assert resp.status_code == 200
+    assert "не нашлось" in resp.text
+
+
+async def test_edit_form_and_save_flow(db_session):
+    link = await _make_link(db_session, url="https://a.com", title="Старый заголовок", tags=["old"])
+
+    with TestClient(app) as client:
+        edit_form = client.get(f"/links/{link.id}/edit-form", headers={"HX-Request": "true"})
+        assert edit_form.status_code == 200
+        assert "Старый заголовок" in edit_form.text
+
+        saved = client.patch(
+            f"/api/links/{link.id}",
+            data={"title": "Новый заголовок", "description": "", "tags": "ai"},
+            headers={"HX-Request": "true"},
+        )
+    assert saved.status_code == 200
+    assert "Новый заголовок" in saved.text
+    assert "Редактировать" in saved.text  # вернулись в режим просмотра (карточка)
+
+
+async def test_detail_edit_form_uses_detail_view_on_save(db_session):
+    link = await _make_link(db_session, url="https://a.com", title="A")
+
+    with TestClient(app) as client:
+        resp = client.patch(
+            f"/api/links/{link.id}",
+            data={"title": "Обновлено", "description": "", "tags": "", "view": "detail"},
+            headers={"HX-Request": "true"},
+        )
+    assert resp.status_code == 200
+    assert "<h1>Обновлено</h1>" in resp.text

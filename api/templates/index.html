@@ -2,15 +2,16 @@
 {% block content %}
 <div class="eyebrow">Team knowledge base</div>
 
-{% if top_links %}
+{% if top3_links %}
 <div class="top-block">
-  <h2>Сейчас в топе у команды</h2>
-  {% for link in top_links %}
+  <h2>Топ-3 новых материала</h2>
+  {% for link in top3_links %}
     <div class="top-row">
       <span class="top-rank">{{ "%02d"|format(loop.index) }}</span>
       <a href="/links/{{ link.id }}">{{ link.title or link.url }}</a>
     </div>
   {% endfor %}
+  <p class="card-meta" style="margin: 10px 0 0;">Собрано {{ top3_collection.created_at.strftime('%d.%m.%Y в %H:%M') }} · обновляется каждый день в 12:00</p>
 </div>
 {% endif %}
 
@@ -34,8 +35,8 @@
   <input type="text" name="chat" placeholder="Чат…" value="{{ chat or '' }}">
   <select name="sort">
     <option value="priority" {% if sort == "priority" %}selected{% endif %}>По приоритету</option>
+    <option value="clicks" {% if sort == "clicks" %}selected{% endif %}>По популярности</option>
     <option value="date" {% if sort == "date" %}selected{% endif %}>По дате</option>
-    <option value="count" {% if sort == "count" %}selected{% endif %}>По числу добавлений</option>
   </select>
 </form>
 

@@ -2,10 +2,14 @@
 {% block content %}
 <div class="eyebrow">Weekly digest</div>
 <h1>Подборки</h1>
+<p class="card-meta">{{ schedule_note }}</p>
+
 {% for c in collections %}
   <div class="card">
     <div class="card-title">{{ c.title }}</div>
-    <div class="card-meta">{{ c.period_start }} — {{ c.period_end }}</div>
+    <div class="card-meta">
+      Период: {{ c.period_start }} — {{ c.period_end }} · собрано {{ c.created_at.strftime('%d.%m.%Y в %H:%M') }}
+    </div>
     <div class="markdown-block">{{ c.summary_md }}</div>
   </div>
 {% else %}

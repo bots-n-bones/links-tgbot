@@ -28,7 +28,7 @@ from shared.config import get_settings
 from shared.tag_normalizer import normalize_tags
 from shared.telegram_throttle import send_message_throttled
 from shared.url_normalizer import normalize_url, url_hash
-from worker.collections import generate_weekly_collection
+from worker.collections import generate_daily_top3, generate_weekly_collection
 from worker.embeddings import get_embedding_client
 from worker.fetcher import FetchError, fetch_metadata
 from worker.llm import get_llm_client
@@ -57,6 +57,10 @@ app.conf.beat_schedule = {
         "schedule": crontab(
             day_of_week=_settings.collection_cron_day, hour=_settings.collection_cron_hour, minute=0
         ),
+    },
+    "generate-daily-top3": {
+        "task": "worker.tasks.generate_daily_top3_task",
+        "schedule": crontab(hour=12, minute=0),
     },
 }
 
@@ -581,3 +585,8 @@ async def _generate_weekly_collection_and_broadcast_async() -> None:
 @app.task(name="worker.tasks.generate_weekly_collection_task")
 def generate_weekly_collection_task() -> None:
     run_task(_generate_weekly_collection_and_broadcast_async())
+
+
+@app.task(name="worker.tasks.generate_daily_top3_task")
+def generate_daily_top3_task() -> None:
+    run_task(generate_daily_top3())

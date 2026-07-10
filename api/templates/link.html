@@ -1,16 +1,8 @@
 {% extends "base.html" %}
 {% block content %}
 <a href="/" class="back-link">&larr; назад</a>
-<h1>{{ link.title or link.url }}</h1>
-<p><a href="{{ link.url }}" target="_blank" rel="noopener" class="source-url">{{ link.url }}</a></p>
-{% if link.description %}<p>{{ link.description }}</p>{% endif %}
-<div class="tags">
-  {% for t in link.tags %}<span class="tag">{{ t.name }}</span>{% endfor %}
-</div>
-<p class="card-meta">
-  Статус: {{ link.status.value }} · добавлений: {{ link.source_count }} ·
-  уникальных отправителей: {{ link.unique_senders }} · приоритет {{ "%.1f"|format(link.priority_score) }}
-</p>
+
+{% include "_link_detail_view.html" %}
 
 <h2>Источники</h2>
 <ul class="sources-list">
@@ -20,6 +12,11 @@
     <li>Источников пока нет.</li>
   {% endfor %}
 </ul>
+
+<h2>Похожие материалы</h2>
+<div id="similar-links">
+  <button hx-get="/links/{{ link.id }}/similar" hx-target="#similar-links" hx-swap="outerHTML">Найти похожие</button>
+</div>
 
 <h2>Research-отчёт</h2>
 <div id="research-result">

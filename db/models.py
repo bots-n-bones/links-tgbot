@@ -55,6 +55,7 @@ class Link(Base):
     source_count: Mapped[int] = mapped_column(Integer, default=1)
     unique_senders: Mapped[int] = mapped_column(Integer, default=1)
     priority_score: Mapped[float] = mapped_column(default=0)
+    click_count: Mapped[int] = mapped_column(Integer, default=0)  # переходов по ссылке с дашборда
     is_hidden: Mapped[bool] = mapped_column(Boolean, default=False)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

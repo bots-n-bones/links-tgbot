@@ -207,11 +207,7 @@
       font-size: 12px;
       font-weight: 500;
     }
-    .tag:nth-of-type(5n+1) { --tag-color: var(--peach); }
-    .tag:nth-of-type(5n+2) { --tag-color: var(--cyan); }
-    .tag:nth-of-type(5n+3) { --tag-color: var(--yellow); }
-    .tag:nth-of-type(5n+4) { --tag-color: var(--green); }
-    .tag:nth-of-type(5n+5) { --tag-color: var(--lilac); }
+    .click-count { font-family: var(--font-mono); font-size: 11px; color: var(--text-faint); }
 
     .card-actions { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
     .card-actions > a { font-size: 13px; font-weight: 500; text-decoration: none; color: var(--text-muted); }
@@ -229,18 +225,31 @@
       transition: border-color 120ms ease, color 120ms ease;
     }
     .card-actions button:hover { border-color: var(--border-strong); color: var(--text); }
-    .tags-form { display: flex; gap: 6px; align-items: center; }
-    .tags-form input {
+    .edit-form { display: flex; flex-direction: column; gap: 8px; }
+    .edit-form label { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-faint); }
+    .edit-form input, .edit-form textarea {
       background: transparent;
       border: 1px solid var(--border);
       color: var(--text);
-      padding: 5px 12px;
-      border-radius: var(--radius-pill);
-      font-size: 12px;
+      padding: 8px 12px;
+      border-radius: var(--radius-md);
       font: inherit;
-      width: 180px;
+      font-size: 14px;
+      width: 100%;
+      resize: vertical;
     }
-    .tags-form input:focus { outline: none; border-color: var(--border-strong); }
+    .edit-form input:focus, .edit-form textarea:focus { outline: none; border-color: var(--border-strong); }
+    .edit-form-actions { display: flex; gap: 8px; margin-top: 4px; }
+    .edit-form-actions button[type="submit"] {
+      background: var(--accent); color: var(--ink); border: none; font-weight: 600;
+    }
+    .edit-form-actions button[type="submit"]:hover { background: var(--accent-active); }
+
+    .similar-links { margin-top: 8px; }
+    .similar-links a { display: block; font-size: 14px; text-decoration: none; padding: 8px 0; border-bottom: 1px solid var(--border); }
+    .similar-links a:last-child { border-bottom: none; }
+    .similar-links a:hover { color: var(--accent); }
+    .similar-empty { font-size: 13px; color: var(--text-faint); }
 
     .pagination { display: flex; gap: 4px; justify-content: center; margin-top: 20px; }
     .pagination a { text-decoration: none; color: var(--text-muted); font-family: var(--font-mono); font-size: 12px; padding: 6px 10px; border-radius: var(--radius-sm); }
