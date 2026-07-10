@@ -1,0 +1,22 @@
+services:
+  bot:
+    environment:
+      RUN_MODE: webhook
+    expose:
+      - "8080"
+
+  api:
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      # - "443:443"  # раскомментировать после настройки SSL (см. README.md)
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/.htpasswd:/etc/nginx/.htpasswd:ro
+    depends_on:
+      - api
+      - bot

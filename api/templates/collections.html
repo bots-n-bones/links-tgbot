@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Подборки</h1>
+{% for c in collections %}
+  <div class="card">
+    <div class="card-title">{{ c.title }}</div>
+    <div class="card-meta">{{ c.period_start }} — {{ c.period_end }}</div>
+    <pre style="white-space: pre-wrap; font-family: inherit;">{{ c.summary_md }}</pre>
+  </div>
+{% else %}
+  <p>Подборок пока нет — первая соберётся автоматически по расписанию.</p>
+{% endfor %}
+{% endblock %}

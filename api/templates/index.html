@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+{% if top_links %}
+<div class="top-block">
+  <h2>Сейчас в топе у команды</h2>
+  {% for link in top_links %}
+    <div>{{ loop.index }}. <a href="/links/{{ link.id }}">{{ link.title or link.url }}</a></div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="ask-block">
+  <form hx-post="/ask" hx-target="#ask-result" hx-swap="innerHTML" hx-indicator="#ask-loading">
+    <input type="text" name="question" placeholder="Спросить базу… например: есть ли у нас что-то про RAG?">
+    <button type="submit">Спросить</button>
+    <span id="ask-loading" class="htmx-indicator">Ищу…</span>
+  </form>
+  <div id="ask-result"></div>
+</div>
+
+<form class="filters" hx-get="/partials/links" hx-target="#links-list" hx-swap="outerHTML" hx-trigger="change, submit">
+  <input type="text" name="q" placeholder="Поиск…" value="{{ q or '' }}">
+  <select name="tag">
+    <option value="">Все теги</option>
+    {% for name, count in all_tags %}
+      <option value="{{ name }}" {% if tag == name %}selected{% endif %}>{{ name }} ({{ count }})</option>
+    {% endfor %}
+  </select>
+  <input type="text" name="chat" placeholder="Чат…" value="{{ chat or '' }}">
+  <select name="sort">
+    <option value="priority" {% if sort == "priority" %}selected{% endif %}>По приоритету</option>
+    <option value="date" {% if sort == "date" %}selected{% endif %}>По дате</option>
+    <option value="count" {% if sort == "count" %}selected{% endif %}>По числу добавлений</option>
+  </select>
+</form>
+
+{% include "_links_list.html" %}
+{% endblock %}

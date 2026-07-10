@@ -1,0 +1,255 @@
+from dataclasses import dataclass, field
+
+from sqlalchemy import select
+
+import bot.handlers.commands as commands_module
+import bot.handlers.group as group_module
+import bot.handlers.private as private_module
+from bot.access import NO_ACCESS_TEXT
+from bot.handlers.private import HELP_HINT_TEXT
+from db.models import Collection, Link, LinkStatus, LinkTag, RawMessage, SourceType, Tag
+from tests.bot.conftest import WHITELISTED_USER_ID
+
+
+@dataclass
+class FakeUser:
+    id: int
+
+
+@dataclass
+class FakeChat:
+    id: int
+    type: str
+
+
+@dataclass
+class FakeMessage:
+    chat: FakeChat
+    from_user: FakeUser | None
+    message_id: int
+    text: str | None = None
+    caption: str | None = None
+    entities: list | None = field(default_factory=list)
+    caption_entities: list | None = field(default_factory=list)
+    sent: list[str] = field(default_factory=list)
+
+    async def answer(self, text: str, **kwargs) -> None:
+        self.sent.append(text)
+
+
+def make_group_message(message_id: int, text: str, sender_id: int = 1) -> FakeMessage:
+    return FakeMessage(
+        chat=FakeChat(id=-100123, type="group"),
+        from_user=FakeUser(id=sender_id),
+        message_id=message_id,
+        text=text,
+    )
+
+
+def make_private_message(message_id: int, text: str | None, sender_id: int) -> FakeMessage:
+    return FakeMessage(
+        chat=FakeChat(id=sender_id, type="private"),
+        from_user=FakeUser(id=sender_id),
+        message_id=message_id,
+        text=text,
+    )
+
+
+# --- group handler ---
+
+
+async def test_group_handler_ingests_url_and_enqueues(db_session, monkeypatch):
+    enqueued: list[int] = []
+    monkeypatch.setattr(group_module, "enqueue_processing", lambda rid: enqueued.append(rid))
+
+    msg = make_group_message(1, "смотрите https://example.com/a")
+    await group_module.handle_group_message(msg)
+
+    rows = (await db_session.execute(select(RawMessage))).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].source_type == SourceType.group
+    assert len(enqueued) == 1
+
+
+async def test_group_handler_no_url_ignored_silently(db_session, monkeypatch):
+    enqueued: list[int] = []
+    monkeypatch.setattr(group_module, "enqueue_processing", lambda rid: enqueued.append(rid))
+
+    msg = make_group_message(2, "просто болтовня без ссылок")
+    await group_module.handle_group_message(msg)
+
+    rows = (await db_session.execute(select(RawMessage))).scalars().all()
+    assert len(rows) == 0
+    assert msg.sent == []
+    assert enqueued == []
+
+
+async def test_group_handler_idempotent_on_duplicate_message(db_session, monkeypatch):
+    enqueued: list[int] = []
+    monkeypatch.setattr(group_module, "enqueue_processing", lambda rid: enqueued.append(rid))
+
+    msg1 = make_group_message(3, "https://example.com/dup")
+    msg2 = make_group_message(3, "https://example.com/dup")  # тот же message_id
+    await group_module.handle_group_message(msg1)
+    await group_module.handle_group_message(msg2)
+
+    rows = (await db_session.execute(select(RawMessage))).scalars().all()
+    assert len(rows) == 1
+    assert len(enqueued) == 1  # второй раз не поставлено в очередь
+
+
+# --- private handler: whitelist ---
+
+
+async def test_private_handler_denies_non_whitelisted(db_session):
+    msg = make_private_message(10, "https://example.com/a", sender_id=1)  # не в whitelist
+    await private_module.handle_private_message(msg)
+
+    assert msg.sent == [NO_ACCESS_TEXT]
+    rows = (await db_session.execute(select(RawMessage))).scalars().all()
+    assert len(rows) == 0
+
+
+async def test_private_handler_whitelisted_with_url_ingests(db_session, monkeypatch):
+    enqueued: list[int] = []
+    monkeypatch.setattr(private_module, "enqueue_processing", lambda rid: enqueued.append(rid))
+
+    msg = make_private_message(11, "https://example.com/b", sender_id=WHITELISTED_USER_ID)
+    await private_module.handle_private_message(msg)
+
+    assert msg.sent == []  # подтверждение шлёт воркер (Фаза 4), не сразу
+    rows = (await db_session.execute(select(RawMessage))).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].source_type == SourceType.direct
+    assert len(enqueued) == 1
+
+
+async def test_private_handler_whitelisted_no_url_routes_to_qa(db_session):
+    # ENV=test (см. tests/bot/conftest.py) => worker.rag использует FakeLLMClient/
+    # FakeEmbeddingClient, реальные вызовы OpenAI не выполняются
+    msg = make_private_message(12, "а есть что-то про RAG?", sender_id=WHITELISTED_USER_ID)
+    await private_module.handle_private_message(msg)
+    assert len(msg.sent) == 1
+    assert "Фейковый ответ LLM." in msg.sent[0]
+
+
+async def test_private_handler_whitelisted_no_text_routes_to_help_hint(db_session):
+    msg = make_private_message(13, None, sender_id=WHITELISTED_USER_ID)
+    await private_module.handle_private_message(msg)
+    assert msg.sent == [HELP_HINT_TEXT]
+
+
+# --- commands ---
+
+
+async def test_cmd_start_denied_for_non_whitelisted():
+    msg = make_private_message(20, "/start", sender_id=1)
+    await commands_module.cmd_start(msg)
+    assert msg.sent == [NO_ACCESS_TEXT]
+
+
+async def test_cmd_start_whitelisted():
+    msg = make_private_message(21, "/start", sender_id=WHITELISTED_USER_ID)
+    await commands_module.cmd_start(msg)
+    assert msg.sent == [commands_module.START_TEXT]
+
+
+async def test_cmd_help_whitelisted():
+    msg = make_private_message(22, "/help", sender_id=WHITELISTED_USER_ID)
+    await commands_module.cmd_help(msg)
+    assert msg.sent == [commands_module.HELP_TEXT]
+
+
+@dataclass
+class FakeCommandObject:
+    args: str | None
+
+
+async def test_cmd_ask_without_question_shows_usage(db_session):
+    msg = make_private_message(23, "/ask", sender_id=WHITELISTED_USER_ID)
+    await commands_module.cmd_ask(msg, FakeCommandObject(args=None))
+    assert msg.sent == ["Использование: /ask <вопрос>"]
+
+
+async def test_cmd_ask_with_question_answers(db_session):
+    msg = make_private_message(24, "/ask что у нас есть про RAG?", sender_id=WHITELISTED_USER_ID)
+    await commands_module.cmd_ask(msg, FakeCommandObject(args="что у нас есть про RAG?"))
+    assert len(msg.sent) == 1
+    assert "Фейковый ответ LLM." in msg.sent[0]
+
+
+async def test_cmd_search_without_topic_shows_usage(db_session):
+    msg = make_private_message(25, "/search", sender_id=WHITELISTED_USER_ID)
+    await commands_module.cmd_search(msg, FakeCommandObject(args=None))
+    assert msg.sent == ["Использование: /search <тема>"]
+
+
+async def test_cmd_search_returns_bare_list(db_session):
+    link = Link(
+        url="https://a.com",
+        normalized_url="a.com",
+        url_hash="h-search",
+        title="Статья про RAG",
+        status=LinkStatus.done,
+    )
+    db_session.add(link)
+    await db_session.commit()
+
+    msg = make_private_message(26, "/search RAG", sender_id=WHITELISTED_USER_ID)
+    await commands_module.cmd_search(msg, FakeCommandObject(args="RAG"))
+    assert len(msg.sent) == 1
+    assert "Статья про RAG" in msg.sent[0]
+    assert "https://a.com" in msg.sent[0]
+
+
+async def test_cmd_search_no_results(db_session):
+    msg = make_private_message(27, "/search несуществующее", sender_id=WHITELISTED_USER_ID)
+    await commands_module.cmd_search(msg, FakeCommandObject(args="несуществующее"))
+    assert msg.sent == ["Ничего не найдено."]
+
+
+async def test_cmd_digest_no_collections_yet(db_session):
+    msg = make_private_message(28, "/digest", sender_id=WHITELISTED_USER_ID)
+    await commands_module.cmd_digest(msg)
+    assert "Подборок пока нет" in msg.sent[0]
+
+
+async def test_cmd_digest_returns_latest_collection(db_session):
+    from datetime import date
+
+    collection = Collection(
+        title="Подборка недели",
+        theme="ai",
+        period_start=date(2026, 7, 1),
+        period_end=date(2026, 7, 7),
+        summary_md="Главное за неделю: всё хорошо.",
+    )
+    db_session.add(collection)
+    await db_session.commit()
+
+    msg = make_private_message(29, "/digest", sender_id=WHITELISTED_USER_ID)
+    await commands_module.cmd_digest(msg)
+    assert "Подборка недели" in msg.sent[0]
+    assert "Главное за неделю" in msg.sent[0]
+
+
+async def test_cmd_stats_reports_counts_and_top_tags(db_session):
+    link = Link(
+        url="https://a.com",
+        normalized_url="a.com",
+        url_hash="h-stats",
+        title="A",
+        status=LinkStatus.done,
+    )
+    db_session.add(link)
+    await db_session.flush()
+    tag = Tag(name="ai", slug="ai")
+    db_session.add(tag)
+    await db_session.flush()
+    db_session.add(LinkTag(link_id=link.id, tag_id=tag.id))
+    await db_session.commit()
+
+    msg = make_private_message(30, "/stats", sender_id=WHITELISTED_USER_ID)
+    await commands_module.cmd_stats(msg)
+    assert "Всего ссылок в базе: 1" in msg.sent[0]
+    assert "ai: 1" in msg.sent[0]

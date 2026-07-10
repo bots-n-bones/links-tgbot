@@ -1,0 +1,22 @@
+<div class="card" id="link-{{ link.id }}">
+  <div class="card-title">
+    <a href="{{ link.url }}" target="_blank" rel="noopener">{{ link.title or link.url }}</a>
+    {% if link.unique_senders >= 2 or link.source_count >= 3 %}<span class="badge">Популярно</span>{% endif %}
+  </div>
+  <div class="card-meta">
+    {{ link.domain or '' }} · добавлений: {{ link.source_count }}, отправителей: {{ link.unique_senders }} ·
+    приоритет {{ "%.1f"|format(link.priority_score) }}
+  </div>
+  {% if link.description %}<p>{{ link.description }}</p>{% endif %}
+  <div class="tags">
+    {% for t in link.tags %}<span class="tag">{{ t.name }}</span>{% endfor %}
+  </div>
+  <div class="card-actions">
+    <a href="/links/{{ link.id }}">Подробнее</a>
+    <form class="tags-form" hx-patch="/api/links/{{ link.id }}/tags" hx-target="#link-{{ link.id }}" hx-swap="outerHTML">
+      <input type="text" name="tags" value="{{ link.tags|map(attribute='name')|join(', ') }}" placeholder="теги через запятую">
+      <button type="submit">Сохранить теги</button>
+    </form>
+    <button hx-patch="/api/links/{{ link.id }}/hide?hidden=true" hx-target="#link-{{ link.id }}" hx-swap="outerHTML">Скрыть</button>
+  </div>
+</div>

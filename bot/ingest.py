@@ -1,0 +1,68 @@
+"""Общая идемпотентная логика приёма сообщений (F-01/F-02) для group.py и private.py."""
+
+from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from db.models import RawMessage, SourceType
+
+
+def entities_to_json(entities: list | None) -> list[dict] | None:
+    if not entities:
+        return None
+    return [
+        {
+            "type": getattr(e, "type", None),
+            "offset": getattr(e, "offset", None),
+            "length": getattr(e, "length", None),
+            "url": getattr(e, "url", None),
+        }
+        for e in entities
+    ]
+
+
+async def ingest_message(
+    session: AsyncSession,
+    *,
+    chat_id: int,
+    message_id: int,
+    sender_id: int | None,
+    text: str | None,
+    entities_json: list[dict] | None,
+    source_type: SourceType,
+) -> tuple[RawMessage, bool]:
+    """Идемпотентно сохраняет сообщение в raw_messages по (chat_id, message_id) (F-02).
+
+    Возвращает (raw_message, is_new).
+    """
+    stmt = (
+        pg_insert(RawMessage)
+        .values(
+            chat_id=chat_id,
+            message_id=message_id,
+            sender_id=sender_id,
+            text=text,
+            entities_json=entities_json,
+            source_type=source_type,
+            processed=False,
+        )
+        .on_conflict_do_nothing(index_elements=["chat_id", "message_id"])
+        .returning(RawMessage)
+    )
+    result = await session.execute(stmt)
+    row = result.scalar_one_or_none()
+    await session.commit()
+    if row is not None:
+        return row, True
+
+    existing = await session.scalar(
+        select(RawMessage).where(RawMessage.chat_id == chat_id, RawMessage.message_id == message_id)
+    )
+    assert existing is not None  # конфликт означает, что строка уже есть
+    return existing, False
+
+
+def enqueue_processing(raw_message_id: int) -> None:
+    from worker.tasks import process_raw_message
+
+    process_raw_message.delay(raw_message_id)

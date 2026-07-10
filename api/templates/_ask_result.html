@@ -1,0 +1,13 @@
+<div class="qa-answer">
+  <p>{{ result.answer }}</p>
+  {% if result.matched_links %}
+  <div class="qa-sources">
+    <strong>Источники:</strong>
+    <ul>
+      {% for m in result.matched_links %}
+        <li><a href="/links/{{ m.id }}">{{ m.title or m.url }}</a> — добавляли {{ m.source_count }} раз</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+</div>

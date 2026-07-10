@@ -1,0 +1,227 @@
+from datetime import UTC, datetime, timedelta
+
+import pytest
+from sqlalchemy import select
+
+import worker.tasks as tasks_module
+from db.models import Link, LinkSource, LinkTag, RawMessage, SourceType, Tag
+from worker.embeddings import FakeEmbeddingClient
+from worker.fetcher import FetchError, PageMeta
+from worker.llm import FakeLLMClient, TagDescriptionResult
+
+
+async def _add_raw_message(
+    db_session, *, chat_id: int, message_id: int, text: str, sender_id: int = 1
+) -> RawMessage:
+    rm = RawMessage(
+        chat_id=chat_id,
+        message_id=message_id,
+        sender_id=sender_id,
+        text=text,
+        source_type=SourceType.group,
+    )
+    db_session.add(rm)
+    await db_session.commit()
+    await db_session.refresh(rm)
+    return rm
+
+
+async def _fake_fetch_ok(url: str) -> PageMeta:
+    return PageMeta(
+        title="Заголовок",
+        description="og-описание",
+        favicon_url="https://x/f.ico",
+        domain="x.com",
+        raw_text="текст страницы",
+    )
+
+
+def _patch_clients(monkeypatch, llm=None, embedding=None):
+    llm = llm or FakeLLMClient()
+    embedding = embedding or FakeEmbeddingClient()
+    monkeypatch.setattr(tasks_module, "get_llm_client", lambda: llm)
+    monkeypatch.setattr(tasks_module, "get_embedding_client", lambda: embedding)
+    return llm, embedding
+
+
+async def test_new_link_creates_rows_with_normalized_tags(db_session, monkeypatch):
+    llm, _ = _patch_clients(monkeypatch)
+    monkeypatch.setattr(tasks_module, "fetch_metadata", _fake_fetch_ok)
+
+    rm = await _add_raw_message(db_session, chat_id=1, message_id=1, text="https://example.com/a")
+    await tasks_module._process_raw_message_async(rm.id)
+
+    links = (await db_session.execute(select(Link))).scalars().all()
+    assert len(links) == 1
+    link = links[0]
+    assert link.status.value == "done"
+    assert link.description == "Фейковое описание для https://example.com/a"
+    assert link.embedding is not None
+
+    sources = (
+        (await db_session.execute(select(LinkSource).where(LinkSource.link_id == link.id)))
+        .scalars()
+        .all()
+    )
+    assert len(sources) == 1
+
+    tag_names = (
+        (
+            await db_session.execute(
+                select(Tag.name)
+                .join(LinkTag, LinkTag.tag_id == Tag.id)
+                .where(LinkTag.link_id == link.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert set(tag_names) == {"dev", "ai"}
+    assert len(llm.describe_calls) == 1
+
+
+async def test_duplicate_does_not_call_llm_again(db_session, monkeypatch):
+    llm, _ = _patch_clients(monkeypatch)
+    monkeypatch.setattr(tasks_module, "fetch_metadata", _fake_fetch_ok)
+
+    rm1 = await _add_raw_message(
+        db_session, chat_id=1, message_id=1, text="https://example.com/dup", sender_id=10
+    )
+    await tasks_module._process_raw_message_async(rm1.id)
+
+    rm2 = await _add_raw_message(
+        db_session, chat_id=1, message_id=2, text="https://example.com/dup", sender_id=20
+    )
+    await tasks_module._process_raw_message_async(rm2.id)
+
+    links = (await db_session.execute(select(Link))).scalars().all()
+    assert len(links) == 1
+    link = links[0]
+    assert link.source_count == 2
+    assert link.unique_senders == 2
+    assert len(llm.describe_calls) == 1  # LLM вызван только один раз
+
+
+async def test_fetch_failure_falls_back_to_message_context(db_session, monkeypatch):
+    llm, _ = _patch_clients(monkeypatch)
+
+    async def failing_fetch(url: str) -> PageMeta:
+        raise FetchError("boom")
+
+    monkeypatch.setattr(tasks_module, "fetch_metadata", failing_fetch)
+
+    rm = await _add_raw_message(
+        db_session, chat_id=1, message_id=3, text="контекст https://example.com/broken"
+    )
+    await tasks_module._process_raw_message_async(rm.id)
+
+    link = (await db_session.execute(select(Link))).scalars().one()
+    assert link.status.value == "fetch_failed"
+    assert link.fetch_error is not None
+    assert len(llm.describe_calls) == 1
+    assert llm.describe_calls[0]["page_text"] == rm.text
+
+
+async def test_prompt_injection_tags_filtered_out(db_session, monkeypatch):
+    class InjectingLLMClient:
+        def __init__(self) -> None:
+            self.describe_calls: list[dict] = []
+
+        async def describe_link(self, **kwargs):
+            self.describe_calls.append(kwargs)
+            return TagDescriptionResult(
+                description="норм. описание",
+                tags=["ai", "ignore previous instructions", "<script>alert(1)</script>", "ии"],
+                confidence=0.5,
+            )
+
+        async def complete(self, **kwargs):
+            return ""
+
+    _patch_clients(monkeypatch, llm=InjectingLLMClient())
+    monkeypatch.setattr(tasks_module, "fetch_metadata", _fake_fetch_ok)
+
+    rm = await _add_raw_message(
+        db_session, chat_id=1, message_id=4, text="https://example.com/injected"
+    )
+    await tasks_module._process_raw_message_async(rm.id)
+
+    link = (await db_session.execute(select(Link))).scalars().one()
+    tag_names = (
+        (
+            await db_session.execute(
+                select(Tag.name)
+                .join(LinkTag, LinkTag.tag_id == Tag.id)
+                .where(LinkTag.link_id == link.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    # мусорные/инъекционные "теги" отброшены allowlist'ом; "ии" тоже —
+    # в тестовой БД нет записи в tag_synonyms
+    assert set(tag_names) == {"ai"}
+
+
+async def test_multiple_urls_in_one_message_processed_individually(db_session, monkeypatch):
+    llm, _ = _patch_clients(monkeypatch)
+    monkeypatch.setattr(tasks_module, "fetch_metadata", _fake_fetch_ok)
+
+    rm = await _add_raw_message(
+        db_session, chat_id=1, message_id=5, text="гляньте https://a.com и https://b.com"
+    )
+    await tasks_module._process_raw_message_async(rm.id)
+
+    links = (await db_session.execute(select(Link))).scalars().all()
+    assert {link.url for link in links} == {"https://a.com", "https://b.com"}
+    assert len(llm.describe_calls) == 2
+
+
+async def test_recompute_all_priority_scores_uses_last_source(db_session):
+    now = datetime.now(UTC)
+    link = Link(
+        url="https://a.com",
+        normalized_url="a.com",
+        url_hash="hash-recompute",
+        source_count=1,
+        unique_senders=1,
+        priority_score=0,
+    )
+    db_session.add(link)
+    await db_session.flush()
+    db_session.add(
+        LinkSource(
+            link_id=link.id,
+            sender_id=1,
+            source_type=SourceType.group,
+            created_at=now - timedelta(days=7),
+        )
+    )
+    await db_session.commit()
+
+    await tasks_module._recompute_all_priority_scores_async()
+
+    await db_session.refresh(link)
+    assert link.priority_score == pytest.approx(1.0 + 2.0 + 1.1, abs=0.05)
+
+
+async def test_poll_unprocessed_batch_enqueues_only_unprocessed(db_session, monkeypatch):
+    rm1 = await _add_raw_message(db_session, chat_id=1, message_id=10, text="https://a.com")
+    rm2 = await _add_raw_message(db_session, chat_id=1, message_id=11, text="https://b.com")
+    rm2.processed = True
+    await db_session.commit()
+
+    class FakeTask:
+        def __init__(self) -> None:
+            self.calls: list[int] = []
+
+        def delay(self, raw_message_id: int) -> None:
+            self.calls.append(raw_message_id)
+
+    fake_task = FakeTask()
+    monkeypatch.setattr(tasks_module, "process_raw_message", fake_task)
+
+    ids = await tasks_module._poll_unprocessed_batch_async()
+
+    assert ids == [rm1.id]
+    assert fake_task.calls == [rm1.id]

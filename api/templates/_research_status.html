@@ -1,0 +1,17 @@
+{% if report %}
+<div id="research-result">
+  <h3>Research-отчёт</h3>
+  <pre style="white-space: pre-wrap; font-family: inherit;">{{ report.report_md }}</pre>
+  {% if report.sources %}
+  <p class="card-meta">Источников найдено: {{ report.sources|length }}</p>
+  {% endif %}
+  <button hx-post="/research/{{ report.id }}/add-links" hx-target="#add-links-result" hx-swap="innerHTML">
+    Добавить найденные ссылки в базу
+  </button>
+  <div id="add-links-result"></div>
+</div>
+{% else %}
+<div id="research-result" hx-get="/links/{{ link_id }}/research/status" hx-trigger="load delay:3s" hx-swap="outerHTML">
+  <p>Ищу… пишу отчёт… (обычно 30-60 сек)</p>
+</div>
+{% endif %}

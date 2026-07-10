@@ -1,0 +1,168 @@
+import enum
+from datetime import date, datetime
+
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Date,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class LinkStatus(str, enum.Enum):
+    pending = "pending"
+    fetching = "fetching"
+    processing = "processing"
+    done = "done"
+    failed = "failed"
+    fetch_failed = "fetch_failed"
+
+
+class SourceType(str, enum.Enum):
+    group = "group"
+    direct = "direct"
+
+
+class Link(Base):
+    __tablename__ = "links"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    normalized_url: Mapped[str] = mapped_column(Text, nullable=False)
+    url_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    title: Mapped[str | None] = mapped_column(Text)
+    description: Mapped[str | None] = mapped_column(Text)
+    domain: Mapped[str | None] = mapped_column(String(255))
+    favicon_url: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[LinkStatus] = mapped_column(
+        Enum(LinkStatus, name="link_status"), default=LinkStatus.pending
+    )
+    fetch_error: Mapped[str | None] = mapped_column(Text)
+    source_count: Mapped[int] = mapped_column(Integer, default=1)
+    unique_senders: Mapped[int] = mapped_column(Integer, default=1)
+    priority_score: Mapped[float] = mapped_column(default=0)
+    is_hidden: Mapped[bool] = mapped_column(Boolean, default=False)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    sources: Mapped[list["LinkSource"]] = relationship(
+        back_populates="link", cascade="all, delete-orphan"
+    )
+    tags: Mapped[list["Tag"]] = relationship(secondary="link_tags", back_populates="links")
+
+
+class LinkSource(Base):
+    __tablename__ = "link_sources"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    link_id: Mapped[int] = mapped_column(ForeignKey("links.id"))
+    chat_id: Mapped[int | None] = mapped_column(BigInteger)
+    chat_title: Mapped[str | None] = mapped_column(Text)
+    message_id: Mapped[int | None] = mapped_column(BigInteger)
+    sender_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    sender_name: Mapped[str | None] = mapped_column(Text)
+    message_text: Mapped[str | None] = mapped_column(Text)
+    reply_to_text: Mapped[str | None] = mapped_column(Text)
+    forwarded_from: Mapped[str | None] = mapped_column(Text)
+    source_type: Mapped[SourceType] = mapped_column(
+        Enum(SourceType, name="source_type"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    link: Mapped["Link"] = relationship(back_populates="sources")
+
+
+class RawMessage(Base):
+    __tablename__ = "raw_messages"
+    __table_args__ = (
+        UniqueConstraint("chat_id", "message_id", name="uq_raw_messages_chat_message"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    message_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    sender_id: Mapped[int | None] = mapped_column(BigInteger)
+    text: Mapped[str | None] = mapped_column(Text)
+    entities_json: Mapped[dict | None] = mapped_column(JSONB)
+    source_type: Mapped[SourceType] = mapped_column(
+        Enum(SourceType, name="source_type"), nullable=False
+    )
+    processed: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Tag(Base):
+    __tablename__ = "tags"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    slug: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+
+    links: Mapped[list["Link"]] = relationship(secondary="link_tags", back_populates="tags")
+
+
+class LinkTag(Base):
+    __tablename__ = "link_tags"
+
+    link_id: Mapped[int] = mapped_column(ForeignKey("links.id"), primary_key=True)
+    tag_id: Mapped[int] = mapped_column(ForeignKey("tags.id"), primary_key=True)
+
+
+class TagSynonym(Base):
+    __tablename__ = "tag_synonyms"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    raw_value: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    canonical_tag: Mapped[str] = mapped_column(String(100), nullable=False)
+
+
+class ResearchReport(Base):
+    __tablename__ = "research_reports"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    link_id: Mapped[int] = mapped_column(ForeignKey("links.id"))
+    topic: Mapped[str | None] = mapped_column(Text)
+    report_md: Mapped[str] = mapped_column(Text, nullable=False)
+    sources_json: Mapped[dict | None] = mapped_column(JSONB)
+    model: Mapped[str | None] = mapped_column(String(50))
+    tokens_used: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Collection(Base):
+    __tablename__ = "collections"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    theme: Mapped[str | None] = mapped_column(String(100))
+    period_start: Mapped[date | None] = mapped_column(Date)
+    period_end: Mapped[date | None] = mapped_column(Date)
+    summary_md: Mapped[str] = mapped_column(Text, nullable=False)
+    link_ids: Mapped[list | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class QALog(Base):
+    __tablename__ = "qa_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(BigInteger)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    answer_md: Mapped[str] = mapped_column(Text, nullable=False)
+    matched_link_ids: Mapped[list | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

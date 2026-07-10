@@ -1,0 +1,26 @@
+services:
+  db:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  api:
+    volumes:
+      - .:/app
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+
+  worker:
+    volumes:
+      - .:/app
+
+  beat:
+    volumes:
+      - .:/app
+
+  bot:
+    volumes:
+      - .:/app
+    # RUN_MODE=polling из .env — не требует публичного HTTPS для локальной разработки
