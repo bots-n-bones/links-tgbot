@@ -10,7 +10,7 @@ from db.session import get_sessionmaker
 from worker.rag import answer_question
 from worker.tasks import add_research_links, generate_research_report
 
-app = FastAPI(title="Link Collector")
+app = FastAPI(title="Nova-260")
 
 app.include_router(links.router)
 app.include_router(collections.router)

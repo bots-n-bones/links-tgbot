@@ -187,7 +187,7 @@ async def test_index_page_renders(db_session):
         resp = client.get("/")
     assert resp.status_code == 200
     assert "Заголовок статьи" in resp.text
-    assert "Link Collector" in resp.text
+    assert "NOVA-260" in resp.text
 
 
 async def test_link_detail_page_renders(db_session):

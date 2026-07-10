@@ -1,10 +1,15 @@
 {% extends "base.html" %}
 {% block content %}
+<div class="eyebrow">Team knowledge base</div>
+
 {% if top_links %}
 <div class="top-block">
   <h2>Сейчас в топе у команды</h2>
   {% for link in top_links %}
-    <div>{{ loop.index }}. <a href="/links/{{ link.id }}">{{ link.title or link.url }}</a></div>
+    <div class="top-row">
+      <span class="top-rank">{{ "%02d"|format(loop.index) }}</span>
+      <a href="/links/{{ link.id }}">{{ link.title or link.url }}</a>
+    </div>
   {% endfor %}
 </div>
 {% endif %}
@@ -13,8 +18,8 @@
   <form hx-post="/ask" hx-target="#ask-result" hx-swap="innerHTML" hx-indicator="#ask-loading">
     <input type="text" name="question" placeholder="Спросить базу… например: есть ли у нас что-то про RAG?">
     <button type="submit">Спросить</button>
-    <span id="ask-loading" class="htmx-indicator">Ищу…</span>
   </form>
+  <span id="ask-loading" class="htmx-indicator">Ищу…</span>
   <div id="ask-result"></div>
 </div>
 

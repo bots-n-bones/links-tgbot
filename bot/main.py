@@ -2,8 +2,7 @@ import asyncio
 import logging
 
 from aiogram import Bot, Dispatcher
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
+from aiogram.types import BotCommand
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
 
@@ -15,6 +14,20 @@ logger = logging.getLogger(__name__)
 
 WEBHOOK_PATH = "/telegram/webhook"
 WEBHOOK_PORT = 8080  # за nginx (Фаза 8, прод docker-compose), наружу не публикуется напрямую
+
+# Меню команд Telegram (кнопка рядом с полем ввода) — соответствует HELP_TEXT.
+BOT_COMMANDS = [
+    BotCommand(command="start", description="Приветствие и инструкция"),
+    BotCommand(command="help", description="Справка по командам"),
+    BotCommand(command="ask", description="Вопрос к базе ссылок"),
+    BotCommand(command="search", description="Краткий список ссылок по теме"),
+    BotCommand(command="digest", description="Последняя тематическая подборка"),
+    BotCommand(command="stats", description="Статистика по базе"),
+]
+
+
+async def _setup_commands(bot: Bot) -> None:
+    await bot.set_my_commands(BOT_COMMANDS)
 
 
 def create_dispatcher() -> Dispatcher:
@@ -30,7 +43,12 @@ def create_dispatcher() -> Dispatcher:
 
 
 def create_bot(token: str) -> Bot:
-    return Bot(token=token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    # Без parse_mode (обычный текст): ответы бота включают заголовки ссылок,
+    # RAG-ответы и другой контент из внешних источников — с HTML/Markdown
+    # parse_mode любой "<...>" или "*..." в нём ломает отправку (Telegram
+    # отклоняет сообщение как невалидную разметку) или создаёт риск
+    # форматирующей инъекции.
+    return Bot(token=token)
 
 
 async def run_polling() -> None:
@@ -38,6 +56,7 @@ async def run_polling() -> None:
     bot = create_bot(settings.bot_token)
     dp = create_dispatcher()
     await bot.delete_webhook(drop_pending_updates=True)
+    await _setup_commands(bot)
     me = await bot.get_me()
     logger.info("Бот запущен: @%s (id=%s), RUN_MODE=polling", me.username, me.id)
     await dp.start_polling(bot)
@@ -54,6 +73,7 @@ async def run_webhook() -> None:
     webhook_url = f"{settings.dashboard_url.rstrip('/')}{WEBHOOK_PATH}"
     secret = settings.telegram_webhook_secret or None
     await bot.set_webhook(webhook_url, secret_token=secret, drop_pending_updates=True)
+    await _setup_commands(bot)
     me = await bot.get_me()
     logger.info(
         "Бот запущен: @%s (id=%s), RUN_MODE=webhook, url=%s", me.username, me.id, webhook_url
