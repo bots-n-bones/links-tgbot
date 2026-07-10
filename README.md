@@ -50,45 +50,62 @@ platform.openai.com/api-keys.
 
 ## Продакшен-деплой
 
-Код готов (webhook-режим бота, nginx + Basic Auth, алерт админу при сбоях),
-но требует реальной инфраструктуры, которой пока нет:
+### Вариант A — выделенный VPS (свой nginx-контейнер)
 
-1. **VPS** (Ubuntu, ≥2 GB RAM) с публичным IP и SSH-доступом.
-2. **Домен**, A-запись указывает на IP VPS.
-3. На сервере: склонировать репозиторий, создать `.env` из
-   `.env.example` (с реальными ключами, `DASHBOARD_URL=https://ваш-домен`).
-4. Создать `nginx/.htpasswd` для Basic Auth дашборда:
-   `htpasswd -c nginx/.htpasswd admin` (пакет `apache2-utils`).
-5. Первый запуск **без** SSL, чтобы certbot смог провалидировать домен по HTTP:
-   `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`.
-6. Выпустить сертификат (certbot, отдельно — не автоматизировано в
-   compose, т.к. требует реального прохождения HTTP-01 challenge):
-   ```
-   sudo apt install certbot
-   sudo certbot certonly --webroot -w /var/www/certbot -d ваш-домен
-   ```
-7. Раскомментировать `server { listen 443 ssl; ... }` в `nginx/nginx.conf`
-   (пути к сертификату `/etc/letsencrypt/live/ваш-домен/`), примонтировать
-   `/etc/letsencrypt` в nginx-контейнер, перезапустить nginx.
-8. Убедиться, что `RUN_MODE=webhook` подхватился у бота (задаётся автоматически
-   через `docker-compose.prod.yml`) — Telegram примет webhook только на
-   HTTPS с валидным сертификатом.
-9. Проверить: `/health` отвечает `{"status": "ok"}`, `/telegram/webhook`
-   отвечает Telegram (не должен требовать Basic Auth), дашборд на `/`
-   спрашивает Basic Auth.
+Если сервер целиком под этот проект и порты 80/443 свободны:
+
+1. **VPS** (Ubuntu, ≥2 GB RAM) с публичным IP и SSH-доступом, **домен**
+   (A-запись → IP VPS).
+2. На сервере: `git clone`, создать `.env` из `.env.example` (реальные
+   ключи, `DASHBOARD_URL=https://ваш-домен`).
+3. `htpasswd -c nginx/.htpasswd admin` (пакет `apache2-utils`).
+4. Поднять с overlay'ем nginx-контейнера (публикует 80/443, монтирует
+   `nginx/nginx.conf` + `.htpasswd`):
+   `docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.nginx.yml up -d --build`.
+5. Выпустить сертификат: `certbot certonly --webroot -w /var/www/certbot -d ваш-домен`,
+   раскомментировать `server { listen 443 ssl; ... }` в `nginx/nginx.conf`,
+   перезапустить nginx-контейнер.
+
+### Вариант B — общий сервер с уже занятым системным nginx (наш случай)
+
+Когда на сервере уже есть другие проекты и порты 80/443/5432/6379 заняты —
+свой nginx-контейнер не поднимаем, используем **системный** nginx с отдельным
+конфигом на конкретный домен, а `api`/`bot` публикуются только на `127.0.0.1`
+на свободных портах.
+
+1. Убедиться, что домен резолвится на IP сервера (`dig +short домен`), и что
+   выбранные порты (по умолчанию `8010` для api, `8080` для webhook бота)
+   свободны на сервере — при конфликте поменять их в
+   `docker-compose.prod.yml` и в `nginx/bnblinks.conf`.
+2. Склонировать репозиторий, создать `.env` (см. `.env.example`,
+   `DASHBOARD_URL=https://ваш-домен`).
+3. `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`
+   — поднимет `db`/`redis`/`worker`/`beat`/`api`/`bot`, **без** отдельного
+   nginx-сервиса (закомментирован/отсутствует в этом overlay).
+4. `htpasswd -c /etc/nginx/.htpasswd-bnblinks admin`.
+5. Скопировать `nginx/bnblinks.conf` в `/etc/nginx/sites-available/`,
+   поправить домен/порты под себя, включить:
+   `ln -s /etc/nginx/sites-available/bnblinks.conf /etc/nginx/sites-enabled/`.
+6. Выпустить сертификат (не трогая существующие сайты):
+   `certbot certonly --nginx -d ваш-домен`.
+7. `nginx -t && systemctl reload nginx`.
+8. Применить миграции внутри контейнера:
+   `docker compose -f docker-compose.yml -f docker-compose.prod.yml exec api alembic -c db/alembic.ini upgrade head`.
+9. Проверить: `curl https://ваш-домен/health` → `{"status":"ok"}`,
+   `/telegram/webhook` доступен без Basic Auth, `/` спрашивает пароль.
 10. Пройти чек-лист приёмки — TZ.md §16.
 
 ### Что уже сделано в коде для деплоя
 
 - `bot/main.py` — `RUN_MODE=webhook` регистрирует webhook у Telegram и
-  поднимает aiohttp-сервер на `:8080` (только внутри Docker-сети, наружу не
-  публикуется — только через nginx).
-- `nginx/nginx.conf` — `/telegram/webhook` и `/health` без Basic Auth
-  (webhook должен быть открыт для серверов Telegram), `/` и `/api` — с
-  Basic Auth.
-- `docker-compose.prod.yml` — overlay поверх `docker-compose.yml`,
-  переключает бота на webhook, добавляет nginx. Не используется в dev
-  (`docker-compose.override.yml` — отдельный dev-overlay с polling).
+  поднимает aiohttp-сервер на `:8080` внутри контейнера.
+- `docker-compose.yml` — `api`/`bot` не публикуют порты наружу по умолчанию
+  (чтобы не конфликтовать с другими проектами на общем сервере) — порты
+  добавляются overlay'ем: `docker-compose.override.yml` (dev, `0.0.0.0:8000`)
+  или `docker-compose.prod.yml` (прод, только `127.0.0.1`).
+- `nginx/nginx.conf` — шаблон для варианта A (выделенный сервер, свой
+  nginx-контейнер). `nginx/bnblinks.conf` — конкретный конфиг для варианта B
+  (наш реальный сервер, системный nginx, `server_name bnblinks.duckdns.org`).
 - NF-04: при 10+ ошибках подряд в обработке ссылок воркер шлёт алерт
   `ADMIN_USER_ID` в Telegram (см. `worker/tasks.py::_record_outcome`).
 - NF-12: `shared/redact.py` маскирует токено-подобные query-параметры

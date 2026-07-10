@@ -1,22 +1,15 @@
 services:
+  # На этом сервере уже есть системный nginx с другими проектами — свой
+  # nginx-контейнер сюда не добавляем, публикуем api/bot только на
+  # 127.0.0.1, а системный nginx проксирует на них по конфигу из
+  # nginx/bnblinks.conf (устанавливается вручную, см. README.md).
   bot:
     environment:
       RUN_MODE: webhook
-    expose:
-      - "8080"
+    ports:
+      - "127.0.0.1:8080:8080"
 
   api:
     command: uvicorn api.main:app --host 0.0.0.0 --port 8000
-
-  nginx:
-    image: nginx:alpine
-    restart: unless-stopped
     ports:
-      - "80:80"
-      # - "443:443"  # раскомментировать после настройки SSL (см. README.md)
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/.htpasswd:/etc/nginx/.htpasswd:ro
-    depends_on:
-      - api
-      - bot
+      - "127.0.0.1:8010:8000"

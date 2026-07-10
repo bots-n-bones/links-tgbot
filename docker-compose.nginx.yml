@@ -1,0 +1,25 @@
+# Опциональный overlay для варианта A (README.md) — выделенный сервер,
+# где порты 80/443 свободны и можно поднять свой nginx-контейнер:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.nginx.yml up -d
+#
+# nginx здесь — контейнер в той же Compose-сети, обращается к api/bot по
+# внутренним DNS-именам (nginx/nginx.conf), публикация api/bot на
+# 127.0.0.1 из docker-compose.prod.yml не мешает и не обязательна.
+#
+# На общем сервере с другими проектами (вариант B) этот файл не используется —
+# там уже существующий системный nginx проксирует на 127.0.0.1:8010/8080
+# напрямую (см. nginx/bnblinks.conf).
+services:
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/.htpasswd:/etc/nginx/.htpasswd:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      - api
+      - bot

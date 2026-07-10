@@ -37,8 +37,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    ports:
-      - "8000:8000"
+    # Порт наружу не публикуется здесь намеренно — на общем сервере он может
+    # конфликтовать с другими проектами. dev публикует его в
+    # docker-compose.override.yml, прод — в docker-compose.prod.yml
+    # (только на 127.0.0.1, наружу смотрит системный nginx).
 
   worker:
     build: .
