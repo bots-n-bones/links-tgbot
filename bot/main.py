@@ -2,9 +2,11 @@ import asyncio
 import logging
 
 from aiogram import Bot, Dispatcher
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import BotCommand
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from bot.handlers import commands, group, private
 from shared.config import get_settings
@@ -28,6 +30,21 @@ BOT_COMMANDS = [
 
 async def _setup_commands(bot: Bot) -> None:
     await bot.set_my_commands(BOT_COMMANDS)
+
+
+@retry(
+    stop=stop_after_attempt(6),
+    wait=wait_exponential(multiplier=2, min=2, max=60),
+    retry=retry_if_exception_type(TelegramBadRequest),
+    reraise=True,
+)
+async def _set_webhook_with_retry(bot: Bot, webhook_url: str, secret: str | None) -> None:
+    # DNS для домена (например, DuckDNS) иногда на секунды становится
+    # нерезолвимым со стороны серверов Telegram даже когда сам домен
+    # отвечает у всех публичных резолверов — ретраим вместо падения
+    # контейнера насмерть на старте (restart: unless-stopped всё равно
+    # подстрахует, но так обычно обходится без рестарта вообще).
+    await bot.set_webhook(webhook_url, secret_token=secret, drop_pending_updates=True)
 
 
 def create_dispatcher() -> Dispatcher:
@@ -72,7 +89,7 @@ async def run_webhook() -> None:
 
     webhook_url = f"{settings.dashboard_url.rstrip('/')}{WEBHOOK_PATH}"
     secret = settings.telegram_webhook_secret or None
-    await bot.set_webhook(webhook_url, secret_token=secret, drop_pending_updates=True)
+    await _set_webhook_with_retry(bot, webhook_url, secret)
     await _setup_commands(bot)
     me = await bot.get_me()
     logger.info(
