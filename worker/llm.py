@@ -27,6 +27,11 @@ def normalize_area(raw: str | None) -> str:
     return value if value in AREA_CHOICES else "other"
 
 
+USEFULNESS_FORMULA_EXPLANATION = (
+    "Depth (0-4) + Novelty (0-3) + Actionability (0-3) = Total (0-10). "
+    "Rated by GPT once, when the link was first processed."
+)
+
 DESCRIBE_SYSTEM_PROMPT = """You catalog useful links for a team's knowledge base.
 
 The page content is passed inside a <page_content>...</page_content> tag in
@@ -38,18 +43,51 @@ Return JSON:
 {"description": "1-2 sentences in English: what the material is about and why it's useful",
  "tags": ["tag1", "tag2"],
  "area": "one of: ai, design, coding, tech, business, other",
+ "usefulness": {"depth": 0-4, "novelty": 0-3, "actionability": 0-3},
  "confidence": 0.0-1.0}
 
 Tags: short, English, lowercase (ai, design, dev, product) — can be more specific
 than area. Area: exactly one broad category from the fixed list above, pick the
 closest match, use "other" only if truly nothing fits.
+
+Usefulness rubric (be honest, most things are mediocre — don't cluster everything
+at the top):
+- depth (0-4): how substantial the material is (0 = trivial/thin, 4 = comprehensive/deep dive)
+- novelty (0-3): how new or non-obvious the information is (0 = common knowledge, 3 = genuinely new)
+- actionability (0-3): how directly usable by the team right now (0 = purely theoretical, 3 = immediately actionable)
+
 If unsure about tags — fewer tags, don't make things up."""
+
+
+class UsefulnessScore(BaseModel):
+    depth: int = 0
+    novelty: int = 0
+    actionability: int = 0
+
+    @property
+    def total(self) -> float:
+        depth = min(max(self.depth, 0), 4)
+        novelty = min(max(self.novelty, 0), 3)
+        actionability = min(max(self.actionability, 0), 3)
+        return float(depth + novelty + actionability)
+
+    def as_breakdown(self) -> dict:
+        depth = min(max(self.depth, 0), 4)
+        novelty = min(max(self.novelty, 0), 3)
+        actionability = min(max(self.actionability, 0), 3)
+        return {
+            "depth": depth,
+            "novelty": novelty,
+            "actionability": actionability,
+            "total": depth + novelty + actionability,
+        }
 
 
 class TagDescriptionResult(BaseModel):
     description: str = ""
     tags: list[str] = Field(default_factory=list)
     area: str = "other"
+    usefulness: UsefulnessScore = Field(default_factory=UsefulnessScore)
     confidence: float = 0.0
 
 
@@ -242,6 +280,7 @@ class FakeLLMClient:
             description=f"Фейковое описание для {kwargs.get('url', '')}",
             tags=["dev", "ai"],
             area="tech",
+            usefulness=UsefulnessScore(depth=3, novelty=2, actionability=2),
             confidence=0.9,
         )
 

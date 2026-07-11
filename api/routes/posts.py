@@ -52,3 +52,23 @@ async def list_all_post_tags(session: AsyncSession) -> list[tuple[str, int]]:
         .order_by(Tag.name)
     )
     return list((await session.execute(stmt)).all())
+
+
+async def get_posts_by_link_ids(session: AsyncSession, link_ids: list[int]) -> dict[int, Post]:
+    """Обратный поиск: для каждой ссылки — пост, из которого она пришла (если
+    пришла из поста). Пробегает все посты со ссылками — ок для текущих
+    объёмов, не оптимизировано под масштаб."""
+    if not link_ids:
+        return {}
+    wanted = set(link_ids)
+    rows = (
+        (await session.execute(select(Post).where(Post.link_ids.isnot(None))))
+        .scalars()
+        .all()
+    )
+    result: dict[int, Post] = {}
+    for post in rows:
+        for lid in post.link_ids or []:
+            if lid in wanted:
+                result[lid] = post
+    return result

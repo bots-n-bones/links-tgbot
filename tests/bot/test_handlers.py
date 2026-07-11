@@ -197,6 +197,8 @@ def test_resolve_post_url_uses_original_channel_post_for_public_forwards():
 
     from aiogram.types import Chat, MessageOriginChannel
 
+    from bot.post_capture import resolve_post_url
+
     origin = MessageOriginChannel(
         type="channel",
         date=datetime.now(UTC),
@@ -206,14 +208,16 @@ def test_resolve_post_url_uses_original_channel_post_for_public_forwards():
     msg = make_group_message(63, "forwarded post")
     msg.forward_origin = origin
 
-    assert group_module._resolve_post_url(msg) == "https://t.me/somechannel/777"
+    assert resolve_post_url(msg) == "https://t.me/somechannel/777"
 
 
 def test_resolve_post_url_falls_back_to_internal_deep_link_without_forward():
+    from bot.post_capture import resolve_post_url
+
     msg = make_group_message(64, "own message")
     msg.chat = FakeChat(id=-100123456789, type="group")
 
-    assert group_module._resolve_post_url(msg) == "https://t.me/c/123456789/64"
+    assert resolve_post_url(msg) == "https://t.me/c/123456789/64"
 
 
 async def test_group_handler_no_url_ignored_silently(db_session, monkeypatch):
@@ -351,6 +355,95 @@ async def test_private_handler_whitelisted_no_text_routes_to_help_hint(db_sessio
     msg = make_private_message(13, None, sender_id=WHITELISTED_USER_ID)
     await private_module.handle_private_message(msg, make_state(WHITELISTED_USER_ID))
     assert msg.sent == [HELP_HINT_TEXT]
+
+
+def _make_public_channel_origin(message_id: int = 100, username: str = "somechannel"):
+    from datetime import UTC, datetime
+
+    from aiogram.types import Chat, MessageOriginChannel
+
+    return MessageOriginChannel(
+        type="channel",
+        date=datetime.now(UTC),
+        chat=Chat(id=-1001111111111, type="channel", username=username),
+        message_id=message_id,
+    )
+
+
+def _make_private_channel_origin(message_id: int = 100):
+    from datetime import UTC, datetime
+
+    from aiogram.types import Chat, MessageOriginChannel
+
+    return MessageOriginChannel(
+        type="channel",
+        date=datetime.now(UTC),
+        chat=Chat(id=-1002222222222, type="channel", username=None),
+        message_id=message_id,
+    )
+
+
+async def test_private_handler_captures_public_channel_forward_without_links(
+    db_session, monkeypatch
+):
+    calls: list[tuple[dict, int]] = []
+    monkeypatch.setattr(
+        private_module,
+        "enqueue_post_processing",
+        lambda payload, countdown=0: calls.append((payload, countdown)),
+    )
+
+    msg = make_private_message(70, "some interesting post", sender_id=WHITELISTED_USER_ID)
+    msg.forward_origin = _make_public_channel_origin()
+    await private_module.handle_private_message(msg, make_state(WHITELISTED_USER_ID))
+
+    assert len(calls) == 1
+    payload, countdown = calls[0]
+    assert payload["post_url"] == "https://t.me/somechannel/100"
+    assert countdown == 0
+    assert msg.sent == []  # чистый форвард без ссылок — просто сохранили, без ответа
+
+
+async def test_private_handler_captures_public_channel_forward_with_link(
+    db_session, monkeypatch
+):
+    post_calls: list[tuple[dict, int]] = []
+    monkeypatch.setattr(
+        private_module,
+        "enqueue_post_processing",
+        lambda payload, countdown=0: post_calls.append((payload, countdown)),
+    )
+    enqueued: list[int] = []
+    monkeypatch.setattr(private_module, "enqueue_processing", lambda rid: enqueued.append(rid))
+
+    msg = make_private_message(
+        71, "check this https://example.com/a", sender_id=WHITELISTED_USER_ID
+    )
+    msg.forward_origin = _make_public_channel_origin(message_id=200)
+    await private_module.handle_private_message(msg, make_state(WHITELISTED_USER_ID))
+
+    assert len(post_calls) == 1
+    payload, countdown = post_calls[0]
+    assert payload["urls"] == ["https://example.com/a"]
+    assert countdown == 20
+    assert len(enqueued) == 1  # ссылка всё равно идёт в обычный link-пайплайн
+
+    rows = (await db_session.execute(select(RawMessage))).scalars().all()
+    assert len(rows) == 1
+
+
+async def test_private_handler_ignores_forward_from_private_channel(db_session, monkeypatch):
+    calls: list[dict] = []
+    monkeypatch.setattr(
+        private_module, "enqueue_post_processing", lambda payload, **kw: calls.append(payload)
+    )
+
+    msg = make_private_message(72, "some post", sender_id=WHITELISTED_USER_ID)
+    msg.forward_origin = _make_private_channel_origin()
+    await private_module.handle_private_message(msg, make_state(WHITELISTED_USER_ID))
+
+    assert calls == []  # не публичный канал — постом не считаем
+    assert len(msg.sent) == 1  # ушло в обычный casual chat как текст
 
 
 # --- commands ---

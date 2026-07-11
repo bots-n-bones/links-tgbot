@@ -148,6 +148,8 @@ class LinkOut(BaseModel):
     title: str | None
     description: str | None
     area: str | None
+    usefulness_score: float | None
+    usefulness_breakdown: dict | None
     domain: str | None
     favicon_url: str | None
     status: str
@@ -167,6 +169,8 @@ class LinkOut(BaseModel):
             title=link.title,
             description=link.description,
             area=link.area,
+            usefulness_score=link.usefulness_score,
+            usefulness_breakdown=link.usefulness_breakdown,
             domain=link.domain,
             favicon_url=link.favicon_url,
             status=link.status.value,

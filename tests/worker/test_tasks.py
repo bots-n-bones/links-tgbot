@@ -57,6 +57,13 @@ async def test_new_link_creates_rows_with_normalized_tags(db_session, monkeypatc
     assert link.status.value == "done"
     assert link.description == "Фейковое описание для https://example.com/a"
     assert link.area == "tech"
+    assert link.usefulness_score == 7.0  # FakeLLMClient: depth=3+novelty=2+actionability=2
+    assert link.usefulness_breakdown == {
+        "depth": 3,
+        "novelty": 2,
+        "actionability": 2,
+        "total": 7,
+    }
     assert link.embedding is not None
 
     sources = (

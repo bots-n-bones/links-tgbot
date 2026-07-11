@@ -1,10 +1,11 @@
 import re
 
 from aiogram import F, Router
-from aiogram.types import Message, MessageOriginChannel
+from aiogram.types import Message
 
 from bot.extractors import extract_urls
 from bot.ingest import enqueue_post_processing, enqueue_processing, entities_to_json, ingest_message
+from bot.post_capture import build_post_payload
 from db.models import SourceType
 from db.session import get_sessionmaker
 from shared.url_normalizer import is_telegram_link
@@ -18,31 +19,8 @@ def _strip_mention(text: str, bot_username: str) -> str:
     return re.sub(re.escape(f"@{bot_username}"), "", text, count=1, flags=re.IGNORECASE).strip()
 
 
-def _resolve_post_url(message: Message) -> str:
-    """Форвард из публичного канала — ссылка на оригинальный пост (у него
-    есть нормальный Telegram-превью). Иначе — внутренний deep-link,
-    открывается только у участников чата."""
-    origin = message.forward_origin
-    if isinstance(origin, MessageOriginChannel) and origin.chat.username:
-        return f"https://t.me/{origin.chat.username}/{origin.message_id}"
-
-    chat_id_str = str(message.chat.id)
-    internal_id = chat_id_str[4:] if chat_id_str.startswith("-100") else chat_id_str.lstrip("-")
-    return f"https://t.me/c/{internal_id}/{message.message_id}"
-
-
 def _enqueue_post(message: Message, urls: list[str]) -> None:
-    payload = {
-        "chat_id": message.chat.id,
-        "message_id": message.message_id,
-        "chat_title": message.chat.title,
-        "sender_id": message.from_user.id if message.from_user else None,
-        "sender_name": message.from_user.full_name if message.from_user else None,
-        "text": message.text or message.caption,
-        "urls": urls,
-        "post_url": _resolve_post_url(message),
-        "photo_file_id": message.photo[-1].file_id if message.photo else None,
-    }
+    payload = build_post_payload(message, urls)
     # Ссылки в посте обрабатываются отдельным быстрым pipeline'ом — даём ему
     # время создать Link до того, как классифицируем пост (см. bot/ingest.py).
     enqueue_post_processing(payload, countdown=20 if urls else 0)

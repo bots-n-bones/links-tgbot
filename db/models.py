@@ -50,6 +50,11 @@ class Link(Base):
     area: Mapped[str | None] = mapped_column(
         String(50)
     )  # coarse category, see worker/llm.AREA_CHOICES
+    # GPT-рубрика 0-10 (depth 0-4 + novelty 0-3 + actionability 0-3), см.
+    # worker/llm.UsefulnessScore. usefulness_breakdown хранит компоненты для
+    # тултипа на дашборде — "как посчитана оценка".
+    usefulness_score: Mapped[float | None] = mapped_column()
+    usefulness_breakdown: Mapped[dict | None] = mapped_column(JSONB)
     domain: Mapped[str | None] = mapped_column(String(255))
     favicon_url: Mapped[str | None] = mapped_column(Text)
     status: Mapped[LinkStatus] = mapped_column(

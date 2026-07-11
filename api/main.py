@@ -9,13 +9,14 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select, text
 
 from api.changelog import CHANGELOG, CURRENT_VERSION
+from api.export import links_to_csv, links_to_markdown, posts_to_csv, posts_to_markdown
 from api.routes import ask, collections, links, research
 from api.routes.links import get_link_detail, list_all_tags, list_digest_history, query_links
-from api.routes.posts import list_all_post_tags, query_posts
+from api.routes.posts import get_posts_by_link_ids, list_all_post_tags, query_posts
 from api.templates_env import templates
 from bot.formatting import format_qa_reply_html, render_markdown_links_html
 from bot.ingest import enqueue_processing, ingest_message
-from db.models import Collection, Link, ResearchReport, SourceType
+from db.models import Collection, Link, Post, ResearchReport, SourceType
 from db.session import get_sessionmaker
 from shared.config import get_settings
 from worker.collections import DAILY_DIGEST_THEME, WEEKLY_DIGEST_THEME
@@ -53,6 +54,7 @@ async def index(
     async with sessionmaker() as session:
         result = await query_links(session, tag=tag, area=area, sort=sort, page=page)
         all_tags = await list_all_tags(session)
+        posts_by_link = await get_posts_by_link_ids(session, [link.id for link in result.items])
 
     return templates.TemplateResponse(
         request,
@@ -66,6 +68,7 @@ async def index(
             "area": area,
             "sort": sort,
             "all_tags": all_tags,
+            "posts_by_link": posts_by_link,
         },
     )
 
@@ -81,12 +84,14 @@ async def partial_links(
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         result = await query_links(session, tag=tag, area=area, sort=sort, page=page)
+        posts_by_link = await get_posts_by_link_ids(session, [link.id for link in result.items])
 
     return templates.TemplateResponse(
         request,
         "_links_list.html",
         {
             "links": result.items,
+            "posts_by_link": posts_by_link,
             "total": result.total,
             "page": result.page,
             "page_size": result.page_size,
@@ -126,12 +131,14 @@ async def add_link_manual(request: Request, url: str = Form(...)):
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         result = await query_links(session, sort="priority", page=1)
+        posts_by_link = await get_posts_by_link_ids(session, [link.id for link in result.items])
 
     list_response = templates.TemplateResponse(
         request,
         "_links_list.html",
         {
             "links": result.items,
+            "posts_by_link": posts_by_link,
             "total": result.total,
             "page": result.page,
             "page_size": result.page_size,
@@ -391,3 +398,59 @@ async def posts_page(request: Request, area: str | None = None, page: int = 1):
             "all_tags": all_tags,
         },
     )
+
+
+def _download(content: str, filename: str, media_type: str) -> Response:
+    return Response(
+        content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/export/links.csv")
+async def export_links_csv():
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        links = (
+            (await session.execute(select(Link).where(Link.is_hidden.is_(False))))
+            .scalars()
+            .all()
+        )
+        for link in links:
+            await session.refresh(link, attribute_names=["tags"])
+    return _download(links_to_csv(links), "links.csv", "text/csv")
+
+
+@app.get("/export/links.md")
+async def export_links_md():
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        links = (
+            (await session.execute(select(Link).where(Link.is_hidden.is_(False))))
+            .scalars()
+            .all()
+        )
+        for link in links:
+            await session.refresh(link, attribute_names=["tags"])
+    return _download(links_to_markdown(links), "links.md", "text/markdown")
+
+
+@app.get("/export/posts.csv")
+async def export_posts_csv():
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        posts = (await session.execute(select(Post))).scalars().all()
+        for post in posts:
+            await session.refresh(post, attribute_names=["tags"])
+    return _download(posts_to_csv(posts), "posts.csv", "text/csv")
+
+
+@app.get("/export/posts.md")
+async def export_posts_md():
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        posts = (await session.execute(select(Post))).scalars().all()
+        for post in posts:
+            await session.refresh(post, attribute_names=["tags"])
+    return _download(posts_to_markdown(posts), "posts.md", "text/markdown")

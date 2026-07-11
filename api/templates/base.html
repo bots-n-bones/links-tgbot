@@ -53,9 +53,10 @@
       font-size: 15px;
       line-height: 1.5;
       letter-spacing: -0.1px;
-      max-width: 920px;
-      margin: 0 auto;
-      padding: 0 24px 64px;
+      max-width: 1800px;
+      margin: 0;
+      padding: 0 40px 64px;
+      text-align: left;
     }
 
     a { color: inherit; }
@@ -115,9 +116,29 @@
     .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
     .brand-mark { width: 34px; height: 34px; flex-shrink: 0; object-fit: contain; }
     .brand-name { font-family: var(--font-display); font-weight: 600; font-size: 19px; letter-spacing: -0.4px; }
-    .site-nav { display: flex; gap: 24px; align-items: center; }
-    .site-nav a { font-size: 13px; font-weight: 500; text-decoration: none; color: var(--text-muted); transition: color 120ms ease; }
-    .site-nav a:hover, .site-nav a.active { color: var(--text); }
+
+    /* --- Nav: pill-segmented control --- */
+    .site-nav {
+      display: flex;
+      gap: 2px;
+      align-items: center;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-pill);
+      padding: 4px;
+    }
+    .site-nav a {
+      font-size: 13px;
+      font-weight: 500;
+      text-decoration: none;
+      color: var(--text-muted);
+      padding: 8px 18px;
+      border-radius: var(--radius-pill);
+      transition: background 120ms ease, color 120ms ease;
+    }
+    .site-nav a:hover { color: var(--text); }
+    .site-nav a.active { background: var(--text); color: var(--ink); }
+    .site-nav a.active:hover { color: var(--ink); }
 
     .eyebrow {
       font-family: var(--font-mono);
@@ -220,6 +241,20 @@
     .tag-option:hover { background: var(--ghost); }
     .tag-option .swatch { width: 9px; height: 9px; border-radius: 50%; background: var(--tag-color, var(--text-faint)); flex-shrink: 0; }
 
+    /* --- Generic text input (popovers: add link, etc.) --- */
+    .input-field {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: var(--radius-md);
+      font: inherit;
+      font-size: 14px;
+      width: 100%;
+    }
+    .input-field:focus { outline: none; border-color: var(--border-strong); }
+    .input-field::placeholder { color: var(--text-faint); }
+
     /* --- Row list (table-style) --- */
     .row-list { display: flex; flex-direction: column; }
     .row-item { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 16px 20px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
@@ -262,10 +297,59 @@
     }
     .data-table .col-title a:hover { color: var(--accent); text-decoration-color: var(--accent); }
     .data-table .col-desc { color: var(--text-muted); max-width: 340px; }
-    .data-table .col-tags, .data-table .col-area { white-space: nowrap; }
+    .data-table .col-tags, .data-table .col-area, .data-table .col-post, .data-table .col-usefulness { white-space: nowrap; }
     .data-table .col-actions { white-space: nowrap; text-align: right; }
     .data-table .tags { margin: 0; }
     .post-thumb { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; margin-bottom: 8px; display: block; }
+
+    /* --- Usefulness score badge + hover tooltip --- */
+    .score-badge {
+      position: relative;
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-pill);
+      padding: 3px 10px;
+      cursor: default;
+    }
+    .score-tooltip {
+      display: none;
+      position: absolute;
+      bottom: calc(100% + 8px);
+      right: 0;
+      width: 220px;
+      background: var(--bg-elevated-hover);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-md);
+      padding: 10px 12px;
+      font-family: var(--font-body);
+      font-size: 12px;
+      font-weight: 400;
+      color: var(--text-muted);
+      line-height: 1.5;
+      white-space: normal;
+      z-index: 20;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    }
+    .score-badge:hover .score-tooltip { display: block; }
+
+    /* --- Post preview popup (Posts table) --- */
+    .preview-dialog {
+      width: min(640px, 92vw);
+      max-height: 85vh;
+      background: var(--bg-elevated);
+      color: var(--text);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-lg);
+      padding: 0;
+      overflow: hidden;
+    }
+    .preview-dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
+    .preview-dialog-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+    .preview-iframe { width: 100%; height: 480px; border: none; display: block; }
 
     .badge {
       display: inline-block;
@@ -349,10 +433,10 @@
       <span class="brand-name">NOVA-260</span>
     </a>
     <nav class="site-nav">
-      <a href="/">Links</a>
-      <a href="/posts">Posts</a>
-      <a href="/daily-digest">Daily digest</a>
-      <a href="/weekly-digest">Weekly digest</a>
+      <a href="/" class="{{ 'active' if request.url.path == '/' else '' }}">Links</a>
+      <a href="/posts" class="{{ 'active' if request.url.path.startswith('/posts') else '' }}">Posts</a>
+      <a href="/daily-digest" class="{{ 'active' if request.url.path.startswith('/daily-digest') else '' }}">Daily digest</a>
+      <a href="/weekly-digest" class="{{ 'active' if request.url.path.startswith('/weekly-digest') else '' }}">Weekly digest</a>
     </nav>
   </header>
   {% block content %}{% endblock %}

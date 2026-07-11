@@ -233,6 +233,8 @@ async def _process_one_url(
     )
     link.description = llm_result.description
     link.area = normalize_area(llm_result.area)
+    link.usefulness_score = llm_result.usefulness.total
+    link.usefulness_breakdown = llm_result.usefulness.as_breakdown()
     normalized_tags = normalize_tags(llm_result.tags, synonyms)
     for tag_name in normalized_tags:
         tag = await _get_or_create_tag(session, tag_name)

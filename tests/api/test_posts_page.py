@@ -28,8 +28,35 @@ async def test_posts_page_renders_list(db_session):
     with TestClient(app) as client:
         resp = client.get("/posts")
     assert resp.status_code == 200
-    assert "A quick note about something useful." in resp.text
+    assert "hello" in resp.text  # текст поста показан приоритетнее summary
     assert 'href="https://t.me/c/123/1"' in resp.text
+    assert "Preview post" in resp.text
+
+
+async def test_posts_page_falls_back_to_summary_without_text(db_session):
+    await _make_post(db_session, text=None)
+
+    with TestClient(app) as client:
+        resp = client.get("/posts")
+    assert resp.status_code == 200
+    assert "A quick note about something useful." in resp.text
+
+
+async def test_posts_page_preview_uses_iframe_for_public_posts(db_session):
+    await _make_post(db_session, post_url="https://t.me/somechannel/42")
+
+    with TestClient(app) as client:
+        resp = client.get("/posts")
+    assert '<iframe src="https://t.me/somechannel/42?embed=1"' in resp.text
+
+
+async def test_posts_page_preview_uses_fallback_card_for_private_posts(db_session):
+    await _make_post(db_session, post_url="https://t.me/c/123/1")
+
+    with TestClient(app) as client:
+        resp = client.get("/posts")
+    assert "<iframe" not in resp.text
+    assert "Open in Telegram" in resp.text
 
 
 async def test_posts_page_filters_by_area(db_session):

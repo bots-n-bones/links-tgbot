@@ -1,6 +1,5 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="eyebrow">ASK ME...</div>
 <div class="ask-block">
   <form hx-post="/ask" hx-target="#ask-result" hx-swap="innerHTML" hx-indicator="#ask-loading">
     <input type="text" name="question" placeholder="Ask the knowledge base… e.g. do we have anything about RAG?">
@@ -61,7 +60,7 @@
         <summary>+ Add link</summary>
         <div class="tag-select-menu" style="min-width: 300px; padding: 14px;">
           <form hx-post="/links/add" hx-target="#links-list" hx-swap="outerHTML" style="display: flex; flex-direction: column; gap: 8px;">
-            <input type="text" name="url" placeholder="https://…" required>
+            <input type="text" name="url" placeholder="https://…" required class="input-field">
             <button type="submit" class="btn btn-primary">Add</button>
           </form>
           <p id="add-link-status" class="card-meta" style="margin: 8px 0 0;"></p>
@@ -70,5 +69,15 @@
     </div>
   </div>
   {% include "_links_list.html" %}
+</div>
+
+<div style="display: flex; justify-content: flex-end;">
+  <details class="tag-select">
+    <summary>Download all data</summary>
+    <div class="tag-select-menu">
+      <a class="tag-option" href="/export/links.csv">Download .csv</a>
+      <a class="tag-option" href="/export/links.md">Download .md</a>
+    </div>
+  </details>
 </div>
 {% endblock %}

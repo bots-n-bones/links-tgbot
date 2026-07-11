@@ -10,14 +10,27 @@ class ChangelogEntry:
     summary: list[str]
 
 
-CURRENT_VERSION = "1.4.0"
+CURRENT_VERSION = "1.4.1"
 
+# date: "YYYY-MM-DD HH:MM" — несколько релизов за день не редкость, время
+# нужно, чтобы порядок и дата были действительно проверяемы (см. git log),
+# а не проставлены на глаз задним числом.
 CHANGELOG: list[ChangelogEntry] = [
     ChangelogEntry(
-        version="1.4.0",
-        date="2026-07-13",
+        version="1.4.1",
+        date="2026-07-11 20:36",
         summary=[
-            "Fixed inline bot buttons never firing — the webhook was only "
+            "Fixed inline buttons answering \"no access\" to everyone: the "
+            "whitelist check was reading callback.message.from_user (the bot "
+            "itself, author of the message the button is attached to) instead "
+            "of callback.from_user (the person who actually clicked)",
+        ],
+    ),
+    ChangelogEntry(
+        version="1.4.0",
+        date="2026-07-11 20:27",
+        summary=[
+            "Fixed inline bot buttons never firing at all — the webhook was only "
             "subscribed to message updates, so Telegram silently dropped "
             "every button press (callback_query)",
             "Links now have an Area (ai / design / coding / tech / business / "
@@ -32,7 +45,7 @@ CHANGELOG: list[ChangelogEntry] = [
     ),
     ChangelogEntry(
         version="1.3.0",
-        date="2026-07-12",
+        date="2026-07-11 16:05",
         summary=[
             "Daily/weekly digest rebuilt: GPT ranks the team's recent links by topic, "
             "then live-searches the web for freshly published articles matching that "
@@ -46,7 +59,7 @@ CHANGELOG: list[ChangelogEntry] = [
     ),
     ChangelogEntry(
         version="1.2.0",
-        date="2026-07-11",
+        date="2026-07-11 15:32",
         summary=[
             "Full redesign: black background, Nova-260 mascot logo, table-style link list",
             "Site and generated content (descriptions, Q&A, digests) switched to English",
@@ -57,7 +70,7 @@ CHANGELOG: list[ChangelogEntry] = [
     ),
     ChangelogEntry(
         version="1.1.0",
-        date="2026-07-10",
+        date="2026-07-10 18:33",
         summary=[
             "Click-based popularity metric replacing internal counters",
             "Daily top-3 picks collection, unified record editing, similar-links feature",
@@ -66,7 +79,7 @@ CHANGELOG: list[ChangelogEntry] = [
     ),
     ChangelogEntry(
         version="1.0.0",
-        date="2026-07-09",
+        date="2026-07-10 15:02",
         summary=[
             "Initial release: bot, worker pipeline, dashboard, RAG Q&A, research reports",
         ],

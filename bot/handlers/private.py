@@ -13,8 +13,9 @@ from bot.access import (
 )
 from bot.extractors import extract_urls
 from bot.formatting import format_link_list_html, format_qa_reply_html
-from bot.ingest import enqueue_processing, entities_to_json, ingest_message
+from bot.ingest import enqueue_post_processing, enqueue_processing, entities_to_json, ingest_message
 from bot.keyboards import main_menu_keyboard
+from bot.post_capture import build_post_payload, is_public_channel_forward
 from bot.states import MenuState
 from db.models import SourceType
 from db.session import get_sessionmaker
@@ -86,6 +87,16 @@ async def handle_private_message(message: Message, state: FSMContext) -> None:
         return
 
     urls = extract_urls(message)
+
+    # F: пересланный пост из ПУБЛИЧНОГО канала — сохраняем как Post (со
+    # ссылками внутри или без). Пересланное из закрытых чатов/просто текст
+    # постом не считаем — см. bot/post_capture.py.
+    if is_public_channel_forward(message):
+        payload = build_post_payload(message, urls)
+        enqueue_post_processing(payload, countdown=20 if urls else 0)
+        if not urls:
+            return  # чистый форвард без ссылок — сохранили пост, дальше нечего делать
+
     if urls:
         sessionmaker = get_sessionmaker()
         async with sessionmaker() as session:

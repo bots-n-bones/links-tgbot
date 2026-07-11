@@ -32,9 +32,11 @@ def _test_env(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _stub_post_enqueue(monkeypatch):
-    """group.py теперь enqueue'ит Post-обработку на каждое сообщение — по
-    умолчанию не даём тестам реально стучаться в Celery/Redis; тесты, которым
-    важно проверить сам факт enqueue, переопределяют это monkeypatch'ем."""
+    """group.py/private.py enqueue'ят Post-обработку — по умолчанию не даём
+    тестам реально стучаться в Celery/Redis; тесты, которым важно проверить
+    сам факт enqueue, переопределяют это monkeypatch'ем."""
     import bot.handlers.group as group_module
+    import bot.handlers.private as private_module
 
     monkeypatch.setattr(group_module, "enqueue_post_processing", lambda payload, **kw: None)
+    monkeypatch.setattr(private_module, "enqueue_post_processing", lambda payload, **kw: None)
