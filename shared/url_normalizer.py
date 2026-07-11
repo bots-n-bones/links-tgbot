@@ -5,6 +5,7 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 _TRACKING_PREFIXES = ("utm_",)
 _TRACKING_PARAMS = {"fbclid", "gclid", "yclid", "mc_cid", "mc_eid", "igshid"}
+_TELEGRAM_DOMAINS = {"t.me", "telegram.me", "www.t.me", "www.telegram.me"}
 
 
 def _is_tracking_param(key: str) -> bool:
@@ -46,3 +47,11 @@ def normalize_url(raw: str) -> str:
 
 def url_hash(normalized_url: str) -> str:
     return hashlib.sha256(normalized_url.encode("utf-8")).hexdigest()
+
+
+def is_telegram_link(raw: str) -> bool:
+    """t.me/telegram.me — ссылки на телеграм-каналы/чаты, а не на контент.
+    Обычно попадают в пересланные посты как подпись/атрибуция автора."""
+    parsed = urlparse(raw if "://" in raw else f"https://{raw}")
+    host = parsed.netloc.lower().split(":")[0]
+    return host in _TELEGRAM_DOMAINS

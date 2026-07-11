@@ -1,4 +1,4 @@
-from shared.url_normalizer import normalize_url, url_hash
+from shared.url_normalizer import is_telegram_link, normalize_url, url_hash
 
 
 def test_lowercases_scheme_and_host():
@@ -57,3 +57,15 @@ def test_url_hash_is_sha256_hex():
     h = url_hash("https://example.com/a")
     assert len(h) == 64
     int(h, 16)  # не бросает ValueError
+
+
+def test_is_telegram_link_true_for_t_me():
+    assert is_telegram_link("https://t.me/some_channel/123")
+    assert is_telegram_link("t.me/+abc123")
+    assert is_telegram_link("https://telegram.me/some_channel")
+    assert is_telegram_link("https://www.t.me/some_channel")
+
+
+def test_is_telegram_link_false_for_other_domains():
+    assert not is_telegram_link("https://example.com/a")
+    assert not is_telegram_link("https://telegra.ph/some-article")

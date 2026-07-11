@@ -71,6 +71,32 @@ async def test_group_handler_ingests_url_and_enqueues(db_session, monkeypatch):
     assert len(enqueued) == 1
 
 
+async def test_group_handler_ignores_telegram_channel_links(db_session, monkeypatch):
+    enqueued: list[int] = []
+    monkeypatch.setattr(group_module, "enqueue_processing", lambda rid: enqueued.append(rid))
+
+    msg = make_group_message(4, "Подписывайтесь на канал: https://t.me/some_channel/42")
+    await group_module.handle_group_message(msg)
+
+    rows = (await db_session.execute(select(RawMessage))).scalars().all()
+    assert len(rows) == 0
+    assert enqueued == []
+
+
+async def test_group_handler_keeps_non_telegram_link_alongside_telegram_one(
+    db_session, monkeypatch
+):
+    enqueued: list[int] = []
+    monkeypatch.setattr(group_module, "enqueue_processing", lambda rid: enqueued.append(rid))
+
+    msg = make_group_message(5, "https://example.com/article смотрите также https://t.me/x/1")
+    await group_module.handle_group_message(msg)
+
+    rows = (await db_session.execute(select(RawMessage))).scalars().all()
+    assert len(rows) == 1  # raw_message сохраняется целиком, фильтруется только список URL
+    assert len(enqueued) == 1
+
+
 async def test_group_handler_no_url_ignored_silently(db_session, monkeypatch):
     enqueued: list[int] = []
     monkeypatch.setattr(group_module, "enqueue_processing", lambda rid: enqueued.append(rid))
