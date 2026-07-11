@@ -13,7 +13,7 @@ from bot.extractors import extract_urls
 from bot.ingest import enqueue_processing, entities_to_json, ingest_message
 from db.models import SourceType
 from db.session import get_sessionmaker
-from worker.rag import answer_question
+from worker.chat import answer_casually
 
 router = Router(name="private")
 router.message.filter(F.chat.type == "private")
@@ -57,13 +57,11 @@ async def handle_private_message(message: Message) -> None:
         return
 
     if message.text or message.caption:
-        # Свободный текст (не /ask) — просто ответ на сообщение, без списка
-        # источников (это отдельно доступно через явную команду /ask).
-        question = message.text or message.caption
-        result = await answer_question(
-            question, user_id=message.from_user.id if message.from_user else None
-        )
-        await message.answer(result.answer)
+        # Свободный текст (не /ask) — просто ответ на сообщение, без поиска по
+        # базе и без списка источников (это отдельно доступно через /ask).
+        text = message.text or message.caption
+        answer = await answer_casually(text)
+        await message.answer(answer)
         return
 
     await message.answer(HELP_HINT_TEXT)

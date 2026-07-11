@@ -8,7 +8,7 @@ from bot.ingest import enqueue_processing, entities_to_json, ingest_message
 from db.models import SourceType
 from db.session import get_sessionmaker
 from shared.url_normalizer import is_telegram_link
-from worker.rag import answer_question
+from worker.chat import answer_casually
 
 router = Router(name="group")
 router.message.filter(F.chat.type.in_({"group", "supergroup"}))
@@ -40,15 +40,13 @@ async def handle_group_message(message: Message, bot_username: str = "") -> None
             enqueue_processing(raw_message.id)
         return
 
-    # Обращение к боту через @username в группе — краткий ответ по базе,
-    # без списка источников (как и в личке — F-простой ответ, не подборка).
+    # Обращение к боту через @username в группе — просто ответ на реплику, без
+    # поиска по базе и без "подборки" (как и в личке — см. bot/handlers/private.py).
     text = message.text or message.caption
     if text and bot_username and f"@{bot_username.lower()}" in text.lower():
         question = _strip_mention(text, bot_username) or text
-        result = await answer_question(
-            question, user_id=message.from_user.id if message.from_user else None
-        )
-        await message.reply(result.answer)
+        answer = await answer_casually(question)
+        await message.reply(answer)
         return
 
     # F-01: ни ссылки, ни обращения к боту — тихо игнорируем, чтобы не спамить чат
