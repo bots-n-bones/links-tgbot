@@ -1,0 +1,35 @@
+{% set is_public = "/c/" not in post.post_url %}
+<tr id="post-{{ post.id }}">
+  <td class="col-title">
+    <a href="{{ post.post_url }}" target="_blank" rel="noopener">{{ post.chat_title or "Post" }} — {{ post.created_at.strftime('%b %d, %Y') }}</a>
+    {% if post.link_ids %}<div class="row-meta">{{ post.link_ids|length }} link{{ "s" if post.link_ids|length != 1 else "" }}</div>{% endif %}
+  </td>
+  <td class="col-desc">{{ post.text or post.summary or "" }}</td>
+  <td class="col-tags">
+    <div class="tags">
+      {% for t in post.tags %}<span class="tag" style="--tag-color: var({{ tag_color(t.name) }});">{{ t.name }}</span>{% endfor %}
+    </div>
+  </td>
+  <td class="col-area">
+    {% if post.area %}<span class="tag" style="--tag-color: var({{ area_color(post.area) }});">{{ post.area }}</span>{% endif %}
+  </td>
+  <td class="col-actions">
+    <button class="btn" onclick="document.getElementById('preview-{{ post.id }}').showModal()">Preview post</button>
+    <button class="btn" hx-patch="/api/posts/{{ post.id }}/hide?hidden=true" hx-target="#post-{{ post.id }}" hx-swap="outerHTML">Hide</button>
+    <dialog id="preview-{{ post.id }}" class="preview-dialog">
+      <div class="preview-dialog-header">
+        <span class="panel-title">Post preview</span>
+        <button class="btn" onclick="document.getElementById('preview-{{ post.id }}').close()">Close</button>
+      </div>
+      {% if is_public %}
+        <iframe src="{{ post.post_url }}?embed=1" class="preview-iframe" loading="lazy"></iframe>
+      {% else %}
+        <div class="card" style="margin: 16px;">
+          {% if post.photo_url %}<img src="{{ post.photo_url }}" alt="" style="max-width: 100%; border-radius: 8px; margin-bottom: 12px;">{% endif %}
+          <p style="margin: 0 0 12px; white-space: pre-wrap;">{{ post.text or "No text." }}</p>
+          <a class="btn" href="{{ post.post_url }}" target="_blank" rel="noopener">Open in Telegram</a>
+        </div>
+      {% endif %}
+    </dialog>
+  </td>
+</tr>

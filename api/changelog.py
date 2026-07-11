@@ -10,12 +10,32 @@ class ChangelogEntry:
     summary: list[str]
 
 
-CURRENT_VERSION = "1.4.2"
+CURRENT_VERSION = "1.5.0"
 
 # date: "YYYY-MM-DD HH:MM" — несколько релизов за день не редкость, время
 # нужно, чтобы порядок и дата были действительно проверяемы (см. git log),
 # а не проставлены на глаз задним числом.
 CHANGELOG: list[ChangelogEntry] = [
+    ChangelogEntry(
+        version="1.5.0",
+        date="2026-07-11 22:16",
+        summary=[
+            "Posts: sort dropdown now matches the site's filter styling, the "
+            "thumbnail was dropped from the title column, and posts can be "
+            "hidden from the list just like links",
+            "Manual \"+ Add post\" from the dashboard — paste a public t.me "
+            "post link and it's fetched, classified, and added; the popover "
+            "opens leftward so it no longer overflows the page edge",
+            "Unified search: /ask now retrieves from both Links and Posts "
+            "(posts got embeddings too) — the search box moved out of the "
+            "Links page and into the center of the top nav, available "
+            "everywhere",
+            "Bot DMs: a post forwarded together with a link now gets a single "
+            "combined confirmation instead of two separate messages; dropped "
+            "the odd-sounding \"first in the base\" line in favor of a plain "
+            "checkmark status with what was added and its tags",
+        ],
+    ),
     ChangelogEntry(
         version="1.4.2",
         date="2026-07-11 21:41",

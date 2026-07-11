@@ -98,6 +98,24 @@ async def test_process_post_without_text_still_gets_summary(db_session):
     assert post.summary  # не пусто, даже без текста
 
 
+async def test_process_post_computes_embedding(db_session):
+    post_id = await process_post(
+        {
+            "chat_id": -100123,
+            "message_id": 50,
+            "chat_title": "Team chat",
+            "sender_id": 5,
+            "sender_name": "Alice",
+            "text": "hello",
+            "urls": [],
+            "post_url": "https://t.me/c/123/50",
+        }
+    )
+    post = await db_session.get(Post, post_id)
+    assert post.embedding is not None
+    assert len(post.embedding) == 1536
+
+
 async def test_process_post_sets_priority_score(db_session):
     post_id = await process_post(
         {
@@ -148,7 +166,47 @@ async def test_process_post_notifies_on_success_when_new(db_session, _bot_token,
     assert len(sent) == 1
     chat_id, text = sent[0]
     assert chat_id == 42
-    assert "Добавил пост в базу" in text
+    assert "✓ Добавлено" in text
+
+
+async def test_process_post_notify_includes_resolved_link_summaries(
+    db_session, _bot_token, monkeypatch
+):
+    link = Link(
+        url="https://example.com/a",
+        normalized_url="https://example.com/a",
+        url_hash=hashlib.sha256(b"https://example.com/a").hexdigest(),
+        title="A",
+        status=LinkStatus.done,
+    )
+    db_session.add(link)
+    await db_session.commit()
+
+    sent = []
+
+    async def fake_send(bot, chat_id, text, **kwargs):
+        sent.append((chat_id, text))
+
+    monkeypatch.setattr(posts_module, "send_message_throttled", fake_send)
+
+    await process_post(
+        {
+            "chat_id": 42,
+            "message_id": 10,
+            "chat_title": "DM",
+            "sender_id": 5,
+            "sender_name": "Alice",
+            "text": "check https://example.com/a",
+            "urls": ["https://example.com/a"],
+            "post_url": "https://t.me/c/1/10",
+            "notify": True,
+        }
+    )
+
+    assert len(sent) == 1
+    text = sent[0][1]
+    assert "✓ Добавлено" in text
+    assert "https://example.com/a" in text
 
 
 async def test_process_post_notifies_already_saved_on_duplicate(db_session, _bot_token, monkeypatch):
@@ -175,7 +233,7 @@ async def test_process_post_notifies_already_saved_on_duplicate(db_session, _bot
     await process_post(payload)
 
     assert len(sent) == 1
-    assert "уже есть в базе" in sent[0][1]
+    assert "✓ Уже в базе" in sent[0][1]
 
 
 async def test_process_post_notifies_on_error_and_reraises(db_session, _bot_token, monkeypatch):

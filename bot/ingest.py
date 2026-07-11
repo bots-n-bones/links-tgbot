@@ -62,10 +62,13 @@ async def ingest_message(
     return existing, False
 
 
-def enqueue_processing(raw_message_id: int) -> None:
+def enqueue_processing(raw_message_id: int, *, notify: bool = True) -> None:
+    """notify=False подавляет обычный ответ бота по ссылке — используется,
+    когда то же сообщение одновременно захватывается как пост (см.
+    private.py): единое сообщение в этом случае шлёт worker.posts.process_post."""
     from worker.tasks import process_raw_message
 
-    process_raw_message.delay(raw_message_id)
+    process_raw_message.delay(raw_message_id, notify)
 
 
 def enqueue_post_processing(payload: dict, *, countdown: int = 20) -> None:

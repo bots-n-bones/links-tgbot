@@ -160,6 +160,10 @@ class Post(Base):
     # (source_count=unique_senders=1 — у поста нет концепции повторных
     # источников), пересчитывается той же ежедневной beat-задачей.
     priority_score: Mapped[float] = mapped_column(default=0)
+    is_hidden: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Для единого RAG-поиска /ask по links+posts (worker/rag.py) — та же модель,
+    # что и Link.embedding.
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     tags: Mapped[list["Tag"]] = relationship(secondary="post_tags", back_populates="posts")
@@ -236,4 +240,5 @@ class QALog(Base):
     question: Mapped[str] = mapped_column(Text, nullable=False)
     answer_md: Mapped[str] = mapped_column(Text, nullable=False)
     matched_link_ids: Mapped[list | None] = mapped_column(JSONB)
+    matched_post_ids: Mapped[list | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

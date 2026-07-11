@@ -13,6 +13,7 @@ def test_format_qa_reply_html_wraps_markdown_title_as_link():
         answer="Вот: [Статья про RAG](https://a.com)",
         matched_links=[
             MatchedLink(
+                kind="link",
                 id=1,
                 url="https://a.com",
                 title="Статья про RAG",
@@ -34,6 +35,7 @@ def test_format_qa_reply_html_no_longer_appends_source_list():
         answer="Ответ без ссылок в тексте",
         matched_links=[
             MatchedLink(
+                kind="link",
                 id=1,
                 url="https://a.com",
                 title="Статья про RAG",

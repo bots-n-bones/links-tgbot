@@ -149,23 +149,33 @@
       margin-bottom: 8px;
     }
 
-    /* --- Ask block --- */
-    .ask-block { margin-bottom: 32px; }
-    .ask-block form { display: flex; gap: 8px; }
-    .ask-block input[type="text"] {
-      flex: 1;
+    /* --- Header search (Ask, in the nav) --- */
+    .header-search { position: relative; flex: 1; max-width: 440px; margin: 0 24px; }
+    .header-search input[type="text"] {
+      width: 100%;
       background: var(--bg-elevated);
       border: 1px solid var(--border);
       color: var(--text);
-      padding: 13px 18px;
+      padding: 10px 16px;
       border-radius: var(--radius-pill);
       font: inherit;
-      font-size: 14px;
+      font-size: 13px;
     }
-    .ask-block input[type="text"]:focus { outline: none; border-color: var(--border-strong); }
-    .ask-block input[type="text"]::placeholder { color: var(--text-faint); }
-    .qa-answer { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px 20px; margin-top: 12px; }
-    .qa-answer p { margin: 0; }
+    .header-search input[type="text"]:focus { outline: none; border-color: var(--border-strong); }
+    .header-search input[type="text"]::placeholder { color: var(--text-faint); }
+    .header-search .htmx-indicator { position: absolute; top: calc(100% + 4px); left: 16px; }
+    .header-search-results {
+      position: absolute;
+      top: calc(100% + 8px);
+      left: 0;
+      right: 0;
+      z-index: 30;
+      max-height: 340px;
+      overflow-y: auto;
+    }
+    .header-search-results:empty { display: none; }
+    .qa-answer { background: var(--bg-elevated-hover); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); padding: 16px 20px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); }
+    .qa-answer p { margin: 0; font-size: 13px; color: var(--text-muted); line-height: 1.6; white-space: pre-wrap; }
 
     /* --- Standalone content block (digest entries, research report) --- */
     .card { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 18px 20px; margin-bottom: 12px; }
@@ -240,6 +250,9 @@
     }
     .tag-option:hover { background: var(--ghost); }
     .tag-option .swatch { width: 9px; height: 9px; border-radius: 50%; background: var(--tag-color, var(--text-faint)); flex-shrink: 0; }
+    /* Открывается влево от триггера — для поповеров у правого края страницы
+       (иначе меню уезжает за пределы viewport на широких full-width страницах). */
+    .tag-select-menu-left { left: auto; right: 0; }
 
     /* --- Generic text input (popovers: add link, etc.) --- */
     .input-field {
@@ -420,7 +433,7 @@
       body { padding: 0 16px 48px; }
       .site-header { flex-wrap: wrap; height: auto; padding: 14px 0; gap: 10px; }
       .brand-name { font-size: 17px; }
-      .ask-block form { flex-direction: column; }
+      .header-search { order: 3; max-width: none; margin: 0; flex-basis: 100%; }
       .row-item { padding: 14px; }
       .row-actions { width: 100%; }
     }
@@ -432,6 +445,15 @@
       <img class="brand-mark" src="/static/img/nova-260.png" alt="Nova-260">
       <span class="brand-name">NOVA-260</span>
     </a>
+    <div class="header-search">
+      <form hx-post="/ask" hx-target="#header-search-results" hx-swap="innerHTML" hx-indicator="#header-search-loading">
+        <input type="text" name="question" placeholder="Search links &amp; posts…"
+               hx-post="/ask" hx-trigger="keyup[key=='Enter']" hx-target="#header-search-results"
+               hx-swap="innerHTML" hx-indicator="#header-search-loading">
+      </form>
+      <span id="header-search-loading" class="htmx-indicator">Searching…</span>
+      <div id="header-search-results" class="header-search-results"></div>
+    </div>
     <nav class="site-nav">
       <a href="/" class="{{ 'active' if request.url.path == '/' else '' }}">Links</a>
       <a href="/posts" class="{{ 'active' if request.url.path.startswith('/posts') else '' }}">Posts</a>

@@ -1,14 +1,5 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="ask-block">
-  <form hx-post="/ask" hx-target="#ask-result" hx-swap="innerHTML" hx-indicator="#ask-loading">
-    <input type="text" name="question" placeholder="Ask the knowledge base… e.g. do we have anything about RAG?">
-    <button type="submit" class="btn btn-primary">Ask</button>
-  </form>
-  <span id="ask-loading" class="htmx-indicator">Searching…</span>
-  <div id="ask-result"></div>
-</div>
-
 <div class="panel">
   <div class="panel-header">
     <span class="panel-title">Links</span>

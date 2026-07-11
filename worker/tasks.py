@@ -274,14 +274,8 @@ async def _process_one_url(
 
 def _build_reply_text(info: LinkReplyInfo, source_type: SourceType) -> str:
     tags_text = ", ".join(info.tags) if info.tags else "—"
-    if info.is_new:
-        lines = [f"Добавил! {info.url}", f"Теги: {tags_text}", "Первая в базе."]
-    else:
-        lines = [
-            f"Уже в базе: {info.url}",
-            f"Добавлений: {info.source_count}, уникальных отправителей: {info.unique_senders}.",
-            f"Теги: {tags_text}",
-        ]
+    status = "✓ Добавлено" if info.is_new else "✓ Уже в базе"
+    lines = [f"{status}: {info.url}", f"Теги: {tags_text}"]
     if source_type == SourceType.direct:
         # F-45: в личке — доп. описание и ссылка на дашборд
         lines.append(f"Описание: {info.description or '—'}")
@@ -353,7 +347,7 @@ async def _record_outcome(success: bool) -> None:
         logger.warning("Не удалось обновить счётчик failure в Redis", exc_info=True)
 
 
-async def _process_raw_message_async(raw_message_id: int) -> None:
+async def _process_raw_message_async(raw_message_id: int, notify: bool = True) -> None:
     llm_client = get_llm_client()
     embedding_client = get_embedding_client()
     sessionmaker = get_sessionmaker()
@@ -393,7 +387,8 @@ async def _process_raw_message_async(raw_message_id: int) -> None:
 
             chat_id, source_type = raw_message.chat_id, raw_message.source_type
 
-        await _reply_to_source(chat_id, source_type, results)
+        if notify:
+            await _reply_to_source(chat_id, source_type, results)
         await _record_outcome(True)
     except Exception:
         await _record_outcome(False)
@@ -401,8 +396,8 @@ async def _process_raw_message_async(raw_message_id: int) -> None:
 
 
 @app.task(name="worker.tasks.process_raw_message")
-def process_raw_message(raw_message_id: int) -> None:
-    run_task(_process_raw_message_async(raw_message_id))
+def process_raw_message(raw_message_id: int, notify: bool = True) -> None:
+    run_task(_process_raw_message_async(raw_message_id, notify))
 
 
 async def _recompute_all_priority_scores_async() -> None:

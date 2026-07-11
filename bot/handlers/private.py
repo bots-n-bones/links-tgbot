@@ -91,7 +91,8 @@ async def handle_private_message(message: Message, state: FSMContext) -> None:
     # F: пересланный пост из ПУБЛИЧНОГО канала — сохраняем как Post (со
     # ссылками внутри или без). Пересланное из закрытых чатов/просто текст
     # постом не считаем — см. bot/post_capture.py.
-    if is_public_channel_forward(message):
+    is_post_forward = is_public_channel_forward(message)
+    if is_post_forward:
         payload = build_post_payload(message, urls)
         payload["notify"] = True  # F: личка — воркер подтвердит добавление/ошибку
         enqueue_post_processing(payload, countdown=20 if urls else 0)
@@ -111,7 +112,9 @@ async def handle_private_message(message: Message, state: FSMContext) -> None:
                 source_type=SourceType.direct,
             )
         if is_new:
-            enqueue_processing(raw_message.id)
+            # Пост+ссылка вместе — единое сообщение шлёт worker.posts.process_post
+            # (см. ниже), обычный ответ по ссылке тут подавляем, чтобы не дублировать.
+            enqueue_processing(raw_message.id, notify=not is_post_forward)
         # Подтверждение (F-40/41/45) отправит воркер после обработки — Фаза 4.
         return
 

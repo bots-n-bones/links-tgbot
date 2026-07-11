@@ -1,7 +1,7 @@
 from sqlalchemy import select
 
 import worker.rag as rag_module
-from db.models import Link, LinkStatus, QALog
+from db.models import Link, LinkStatus, Post, QALog
 from worker.rag import _strip_hallucinated_urls
 
 
@@ -75,6 +75,7 @@ async def test_answer_question_ranks_closest_link_first(db_session, monkeypatch)
     assert logs[0].question == "что там про RAG?"
     assert logs[0].user_id == 42
     assert logs[0].matched_link_ids == [link_close.id, link_far.id]
+    assert logs[0].matched_post_ids == []
 
 
 async def test_answer_question_with_empty_db_still_logs(db_session, monkeypatch):
@@ -90,6 +91,7 @@ async def test_answer_question_with_empty_db_still_logs(db_session, monkeypatch)
     logs = (await db_session.execute(select(QALog))).scalars().all()
     assert len(logs) == 1
     assert logs[0].matched_link_ids == []
+    assert logs[0].matched_post_ids == []
 
 
 async def test_answer_question_excludes_hidden_links(db_session, monkeypatch):
@@ -103,6 +105,58 @@ async def test_answer_question_excludes_hidden_links(db_session, monkeypatch):
         is_hidden=True,
     )
     db_session.add(hidden_link)
+    await db_session.commit()
+
+    monkeypatch.setattr(
+        rag_module, "get_embedding_client", lambda: FixedEmbeddingClient(_dim_vector(0))
+    )
+    monkeypatch.setattr(rag_module, "get_llm_client", lambda: FixedLLMClient("нет данных"))
+
+    result = await rag_module.answer_question("вопрос")
+    assert result.matched_links == []
+
+
+async def test_answer_question_includes_matched_posts(db_session, monkeypatch):
+    post = Post(
+        chat_id=-100123,
+        message_id=1,
+        chat_title="Team chat",
+        text="Пост про RAG-архитектуру",
+        post_url="https://t.me/somechannel/5",
+        embedding=_dim_vector(0),
+    )
+    db_session.add(post)
+    await db_session.commit()
+
+    monkeypatch.setattr(
+        rag_module, "get_embedding_client", lambda: FixedEmbeddingClient(_dim_vector(0))
+    )
+    fake_llm = FixedLLMClient("См. https://t.me/somechannel/5 про RAG.")
+    monkeypatch.setattr(rag_module, "get_llm_client", lambda: fake_llm)
+
+    result = await rag_module.answer_question("что там про RAG?")
+
+    assert len(result.matched_links) == 1
+    assert result.matched_links[0].kind == "post"
+    assert result.matched_links[0].url == "https://t.me/somechannel/5"
+    assert "https://t.me/somechannel/5" in result.answer
+
+    logs = (await db_session.execute(select(QALog))).scalars().all()
+    assert logs[0].matched_link_ids == []
+    assert logs[0].matched_post_ids == [post.id]
+
+
+async def test_answer_question_excludes_hidden_posts(db_session, monkeypatch):
+    hidden_post = Post(
+        chat_id=-100123,
+        message_id=2,
+        chat_title="Team chat",
+        text="скрытый пост",
+        post_url="https://t.me/somechannel/6",
+        embedding=_dim_vector(0),
+        is_hidden=True,
+    )
+    db_session.add(hidden_post)
     await db_session.commit()
 
     monkeypatch.setattr(

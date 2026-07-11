@@ -13,6 +13,7 @@ class AskRequest(BaseModel):
 
 
 class MatchedLinkOut(BaseModel):
+    kind: str
     id: int
     url: str
     title: str | None
@@ -33,6 +34,7 @@ async def ask_question(body: AskRequest) -> AskResponse:
         answer=result.answer,
         matched_links=[
             MatchedLinkOut(
+                kind=m.kind,
                 id=m.id,
                 url=m.url,
                 title=m.title,

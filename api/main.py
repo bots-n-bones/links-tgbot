@@ -1,4 +1,6 @@
+import hashlib
 import html
+import re
 import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -10,16 +12,17 @@ from sqlalchemy import select, text
 
 from api.changelog import CHANGELOG, CURRENT_VERSION
 from api.export import links_to_csv, links_to_markdown, posts_to_csv, posts_to_markdown
-from api.routes import ask, collections, links, research
+from api.routes import ask, collections, links, posts as posts_routes, research
 from api.routes.links import get_link_detail, list_all_tags, list_digest_history, query_links
 from api.routes.posts import get_posts_by_link_ids, list_all_post_tags, query_posts
 from api.templates_env import templates
 from bot.formatting import format_qa_reply_html, render_markdown_links_html
-from bot.ingest import enqueue_processing, ingest_message
+from bot.ingest import enqueue_post_processing, enqueue_processing, ingest_message
 from db.models import Collection, Link, Post, ResearchReport, SourceType
 from db.session import get_sessionmaker
 from shared.config import get_settings
 from worker.collections import DAILY_DIGEST_THEME, WEEKLY_DIGEST_THEME
+from worker.fetcher import FetchError, fetch_metadata
 from worker.rag import answer_question
 from worker.tasks import add_research_links, generate_research_report
 
@@ -29,6 +32,7 @@ app = FastAPI(title="Nova-260")
 app.mount("/static", StaticFiles(directory="api/static"), name="static")
 
 app.include_router(links.router)
+app.include_router(posts_routes.router)
 app.include_router(collections.router)
 app.include_router(research.router)
 app.include_router(ask.router)
@@ -408,6 +412,66 @@ async def posts_page(
     )
 
 
+POST_URL_RE = re.compile(r"^https?://t\.me/([A-Za-z0-9_]{5,32})/(\d+)/?(?:\?.*)?$")
+
+
+@app.post("/posts/add", response_class=HTMLResponse)
+async def add_post_manual(request: Request, url: str = Form(...)):
+    """Ручное добавление поста по публичной t.me-ссылке — фетчим текст со
+    страницы предпросмотра Telegram (доступна без авторизации для открытых
+    каналов) и дальше идём через тот же worker.posts.process_post, что и
+    форварды из бота."""
+    match = POST_URL_RE.match(url.strip())
+    if match is None:
+        status_text = "Enter a public post link like https://t.me/channel/123."
+    else:
+        channel, message_id_str = match.group(1), match.group(2)
+        post_url = f"https://t.me/{channel}/{message_id_str}"
+        try:
+            meta = await fetch_metadata(post_url)
+            post_text = meta.description or None
+        except FetchError:
+            post_text = None
+
+        chat_id = -int(hashlib.sha256(channel.encode()).hexdigest()[:12], 16)
+        payload = {
+            "chat_id": chat_id,
+            "message_id": int(message_id_str),
+            "chat_title": channel,
+            "sender_id": None,
+            "sender_name": None,
+            "text": post_text,
+            "urls": [],
+            "post_url": post_url,
+        }
+        enqueue_post_processing(payload, countdown=0)
+        status_text = "Added — will appear in the table once processed (a few seconds)."
+
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        result = await query_posts(session, sort="priority", page=1)
+        all_tags = await list_all_post_tags(session)
+
+    list_response = templates.TemplateResponse(
+        request,
+        "_posts_list.html",
+        {
+            "posts": result.items,
+            "total": result.total,
+            "page": result.page,
+            "page_size": result.page_size,
+            "tag": None,
+            "area": None,
+            "sort": "priority",
+        },
+    )
+    status_html = (
+        f'<p id="add-post-status" hx-swap-oob="true" class="card-meta">'
+        f"{html.escape(status_text)}</p>"
+    )
+    return HTMLResponse(list_response.body.decode() + status_html)
+
+
 def _download(content: str, filename: str, media_type: str) -> Response:
     return Response(
         content,
@@ -448,7 +512,11 @@ async def export_links_md():
 async def export_posts_csv():
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
-        posts = (await session.execute(select(Post))).scalars().all()
+        posts = (
+            (await session.execute(select(Post).where(Post.is_hidden.is_(False))))
+            .scalars()
+            .all()
+        )
         for post in posts:
             await session.refresh(post, attribute_names=["tags"])
     return _download(posts_to_csv(posts), "posts.csv", "text/csv")
@@ -458,7 +526,11 @@ async def export_posts_csv():
 async def export_posts_md():
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
-        posts = (await session.execute(select(Post))).scalars().all()
+        posts = (
+            (await session.execute(select(Post).where(Post.is_hidden.is_(False))))
+            .scalars()
+            .all()
+        )
         for post in posts:
             await session.refresh(post, attribute_names=["tags"])
     return _download(posts_to_markdown(posts), "posts.md", "text/markdown")

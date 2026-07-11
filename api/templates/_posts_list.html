@@ -1,0 +1,33 @@
+<div id="posts-list">
+{% if posts %}
+<div class="table-scroll">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Post</th>
+        <th>Text</th>
+        <th>Tags</th>
+        <th>Area</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for post in posts %}
+        {% include "_post_row.html" %}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+  <p class="panel-empty">No posts yet.</p>
+{% endif %}
+
+{% if total > page_size %}
+{% set total_pages = ((total - 1) // page_size) + 1 %}
+<div class="pagination">
+  {% for p in range(1, total_pages + 1) %}
+    <a href="/posts?tag={{ tag or '' }}&area={{ area or '' }}&sort={{ sort }}&page={{ p }}">{{ p }}{% if p == page %} ●{% endif %}</a>
+  {% endfor %}
+</div>
+{% endif %}
+</div>

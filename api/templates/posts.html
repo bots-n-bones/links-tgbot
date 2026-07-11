@@ -37,7 +37,7 @@
           {% endfor %}
         </div>
       </details>
-      <form method="get" action="/posts">
+      <form class="filters" method="get" action="/posts">
         <input type="hidden" name="tag" value="{{ tag or '' }}">
         <input type="hidden" name="area" value="{{ area or '' }}">
         <select name="sort" onchange="this.form.submit()">
@@ -45,74 +45,20 @@
           <option value="date" {% if sort == "date" %}selected{% endif %}>By date</option>
         </select>
       </form>
+      <details class="tag-select">
+        <summary>+ Add post</summary>
+        <div class="tag-select-menu tag-select-menu-left" style="min-width: 300px; padding: 14px;">
+          <form hx-post="/posts/add" hx-target="#posts-list" hx-swap="outerHTML" style="display: flex; flex-direction: column; gap: 8px;">
+            <input type="text" name="url" placeholder="https://t.me/channel/123" required class="input-field">
+            <button type="submit" class="btn btn-primary">Add</button>
+          </form>
+          <p id="add-post-status" class="card-meta" style="margin: 8px 0 0;"></p>
+        </div>
+      </details>
     </div>
   </div>
 
-  {% if posts %}
-  <div class="table-scroll">
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th>Post</th>
-          <th>Text</th>
-          <th>Tags</th>
-          <th>Area</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for post in posts %}
-        {% set is_public = "/c/" not in post.post_url %}
-        <tr>
-          <td class="col-title">
-            {% if post.photo_url %}<img src="{{ post.photo_url }}" alt="" class="post-thumb">{% endif %}
-            <a href="{{ post.post_url }}" target="_blank" rel="noopener">{{ post.chat_title or "Post" }} — {{ post.created_at.strftime('%b %d, %Y') }}</a>
-            {% if post.link_ids %}<div class="row-meta">{{ post.link_ids|length }} link{{ "s" if post.link_ids|length != 1 else "" }}</div>{% endif %}
-          </td>
-          <td class="col-desc">{{ post.text or post.summary or "" }}</td>
-          <td class="col-tags">
-            <div class="tags">
-              {% for t in post.tags %}<span class="tag" style="--tag-color: var({{ tag_color(t.name) }});">{{ t.name }}</span>{% endfor %}
-            </div>
-          </td>
-          <td class="col-area">
-            {% if post.area %}<span class="tag" style="--tag-color: var({{ area_color(post.area) }});">{{ post.area }}</span>{% endif %}
-          </td>
-          <td class="col-actions">
-            <button class="btn" onclick="document.getElementById('preview-{{ post.id }}').showModal()">Preview post</button>
-            <dialog id="preview-{{ post.id }}" class="preview-dialog">
-              <div class="preview-dialog-header">
-                <span class="panel-title">Post preview</span>
-                <button class="btn" onclick="document.getElementById('preview-{{ post.id }}').close()">Close</button>
-              </div>
-              {% if is_public %}
-                <iframe src="{{ post.post_url }}?embed=1" class="preview-iframe" loading="lazy"></iframe>
-              {% else %}
-                <div class="card" style="margin: 16px;">
-                  {% if post.photo_url %}<img src="{{ post.photo_url }}" alt="" style="max-width: 100%; border-radius: 8px; margin-bottom: 12px;">{% endif %}
-                  <p style="margin: 0 0 12px; white-space: pre-wrap;">{{ post.text or "No text." }}</p>
-                  <a class="btn" href="{{ post.post_url }}" target="_blank" rel="noopener">Open in Telegram</a>
-                </div>
-              {% endif %}
-            </dialog>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% else %}
-    <p class="panel-empty">No posts yet.</p>
-  {% endif %}
-
-  {% if total > page_size %}
-  {% set total_pages = ((total - 1) // page_size) + 1 %}
-  <div class="pagination">
-    {% for p in range(1, total_pages + 1) %}
-      <a href="/posts?tag={{ tag or '' }}&area={{ area or '' }}&sort={{ sort }}&page={{ p }}">{{ p }}{% if p == page %} ●{% endif %}</a>
-    {% endfor %}
-  </div>
-  {% endif %}
+  {% include "_posts_list.html" %}
 </div>
 
 <div style="display: flex; justify-content: flex-end;">

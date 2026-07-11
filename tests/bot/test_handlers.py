@@ -328,7 +328,9 @@ async def test_private_handler_rejects_unknown_invite_code(db_session):
 
 async def test_private_handler_whitelisted_with_url_ingests(db_session, monkeypatch):
     enqueued: list[int] = []
-    monkeypatch.setattr(private_module, "enqueue_processing", lambda rid: enqueued.append(rid))
+    monkeypatch.setattr(
+        private_module, "enqueue_processing", lambda rid, notify=True: enqueued.append(rid)
+    )
 
     msg = make_private_message(11, "https://example.com/b", sender_id=WHITELISTED_USER_ID)
     await private_module.handle_private_message(msg, make_state(WHITELISTED_USER_ID))
@@ -413,8 +415,12 @@ async def test_private_handler_captures_public_channel_forward_with_link(
         "enqueue_post_processing",
         lambda payload, countdown=0: post_calls.append((payload, countdown)),
     )
-    enqueued: list[int] = []
-    monkeypatch.setattr(private_module, "enqueue_processing", lambda rid: enqueued.append(rid))
+    enqueued: list[tuple[int, bool]] = []
+    monkeypatch.setattr(
+        private_module,
+        "enqueue_processing",
+        lambda rid, notify=True: enqueued.append((rid, notify)),
+    )
 
     msg = make_private_message(
         71, "check this https://example.com/a", sender_id=WHITELISTED_USER_ID
@@ -427,6 +433,8 @@ async def test_private_handler_captures_public_channel_forward_with_link(
     assert payload["urls"] == ["https://example.com/a"]
     assert countdown == 20
     assert len(enqueued) == 1  # ссылка всё равно идёт в обычный link-пайплайн
+    # но без своего ответа — единое сообщение шлёт worker.posts.process_post
+    assert enqueued[0][1] is False
 
     rows = (await db_session.execute(select(RawMessage))).scalars().all()
     assert len(rows) == 1

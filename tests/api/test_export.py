@@ -88,3 +88,13 @@ async def test_export_posts_md(db_session):
     assert resp.status_code == 200
     assert "| id | post_url |" in resp.text
     assert "check this out" in resp.text
+
+
+async def test_export_posts_excludes_hidden(db_session):
+    post = await _make_post(db_session)
+    post.is_hidden = True
+    await db_session.commit()
+
+    with TestClient(app) as client:
+        resp = client.get("/export/posts.csv")
+    assert "check this out" not in resp.text

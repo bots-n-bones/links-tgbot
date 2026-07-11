@@ -1,11 +1,17 @@
-"""Вспомогательные запросы для страницы /posts (F: вкладка Posts)."""
+"""Вспомогательные запросы для страницы /posts (F: вкладка Posts) + PATCH
+/api/posts/{id}/hide (аналог /api/links/{id}/hide)."""
 
 from dataclasses import dataclass
 
+from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import Post, PostTag, Tag
+from db.session import get_sessionmaker
+
+router = APIRouter(prefix="/api/posts", tags=["posts"])
 
 PAGE_SIZE = 20
 SORT_COLUMNS = {
@@ -31,7 +37,7 @@ async def query_posts(
     page: int = 1,
     page_size: int = PAGE_SIZE,
 ) -> PostListResult:
-    conditions = []
+    conditions = [Post.is_hidden.is_(False)]
     if tag:
         conditions.append(
             Post.id.in_(
@@ -83,3 +89,18 @@ async def get_posts_by_link_ids(session: AsyncSession, link_ids: list[int]) -> d
             if lid in wanted:
                 result[lid] = post
     return result
+
+
+@router.patch("/{post_id}/hide")
+async def hide_post(post_id: int, request: Request, hidden: bool = Query(True)):
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        post = await session.get(Post, post_id)
+        if post is None:
+            raise HTTPException(404, "Post not found")
+        post.is_hidden = hidden
+        await session.commit()
+
+    if request.headers.get("hx-request") == "true":
+        return HTMLResponse("")  # HTMX: убираем строку из таблицы
+    return {"id": post_id, "is_hidden": hidden}

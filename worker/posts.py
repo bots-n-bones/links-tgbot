@@ -4,7 +4,7 @@
 здесь только пытаемся сослаться на уже созданные Link по url_hash."""
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -17,6 +17,7 @@ from shared.config import get_settings
 from shared.tag_normalizer import normalize_tags
 from shared.telegram_throttle import send_message_throttled
 from shared.url_normalizer import normalize_url, url_hash
+from worker.embeddings import get_embedding_client
 from worker.llm import get_llm_client, normalize_area
 from worker.priority import compute_priority_score
 
@@ -32,6 +33,8 @@ class PostResult:
     area: str | None
     tags: list[str]
     link_count: int
+    post_url: str | None = None
+    link_summaries: list[str] = field(default_factory=list)
 
 
 async def _download_post_photo(file_id: str) -> str | None:
@@ -54,6 +57,7 @@ async def _download_post_photo(file_id: str) -> str | None:
 async def _process_post_inner(payload: dict) -> PostResult:
     settings = get_settings()
     llm_client = get_llm_client()
+    embedding_client = get_embedding_client()
     sessionmaker = get_sessionmaker()
 
     text = (payload.get("text") or "").strip()
@@ -72,6 +76,7 @@ async def _process_post_inner(payload: dict) -> PostResult:
                 area=existing.area,
                 tags=[t.name for t in existing.tags],
                 link_count=len(existing.link_ids or []),
+                post_url=existing.post_url,
             )
 
         classification = await llm_client.classify_post(
@@ -86,11 +91,17 @@ async def _process_post_inner(payload: dict) -> PostResult:
             photo_url = await _download_post_photo(photo_file_id)
 
         link_ids: list[int] = []
+        link_summaries: list[str] = []
         for url in payload.get("urls", []):
             h = url_hash(normalize_url(url))
             link = await session.scalar(select(Link).where(Link.url_hash == h))
             if link is not None:
                 link_ids.append(link.id)
+                await session.refresh(link, attribute_names=["tags"])
+                tags_text = ", ".join(t.name for t in link.tags) or "—"
+                link_summaries.append(f"{link.url} (теги: {tags_text})")
+
+        embedding = await embedding_client.embed(f"{text} {classification.summary}".strip())
 
         now = datetime.now(UTC)
         post = Post(
@@ -105,6 +116,7 @@ async def _process_post_inner(payload: dict) -> PostResult:
             area=area,
             photo_url=photo_url,
             link_ids=link_ids,
+            embedding=embedding,
             priority_score=compute_priority_score(1, 1, now, now),
         )
         session.add(post)
@@ -126,6 +138,8 @@ async def _process_post_inner(payload: dict) -> PostResult:
             area=area,
             tags=tag_names,
             link_count=len(link_ids),
+            post_url=post.post_url,
+            link_summaries=link_summaries,
         )
 
 
@@ -142,11 +156,12 @@ async def _notify(chat_id: int, text: str) -> None:
 
 def _success_text(result: PostResult) -> str:
     if not result.is_new:
-        return "Этот пост уже есть в базе."
+        return f"✓ Уже в базе: {result.post_url}"
     tags_text = ", ".join(result.tags) if result.tags else "—"
-    lines = [f"Добавил пост в базу. Area: {result.area or '—'}", f"Теги: {tags_text}"]
-    if result.link_count:
-        lines.append(f"Ссылок в посте: {result.link_count}")
+    lines = [f"✓ Добавлено: {result.post_url}", f"Теги: {tags_text}"]
+    if result.link_summaries:
+        lines.append("Ссылки внутри поста:")
+        lines.extend(f"- {s}" for s in result.link_summaries)
     return "\n".join(lines)
 
 
