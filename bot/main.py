@@ -47,7 +47,16 @@ async def _set_webhook_with_retry(bot: Bot, webhook_url: str, secret: str | None
     # отвечает у всех публичных резолверов — ретраим вместо падения
     # контейнера насмерть на старте (restart: unless-stopped всё равно
     # подстрахует, но так обычно обходится без рестарта вообще).
-    await bot.set_webhook(webhook_url, secret_token=secret, drop_pending_updates=True)
+    # allowed_updates: Telegram keeps the previously registered list if this is
+    # omitted — an earlier setup only ever asked for "message", so inline-button
+    # presses (callback_query) were silently never delivered. Listing both
+    # explicitly every time keeps this from regressing again.
+    await bot.set_webhook(
+        webhook_url,
+        secret_token=secret,
+        drop_pending_updates=True,
+        allowed_updates=["message", "callback_query"],
+    )
 
 
 def create_dispatcher() -> Dispatcher:
