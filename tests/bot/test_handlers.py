@@ -55,14 +55,25 @@ class FakeMessage:
         self.sent.append(text)
 
 
+BOT_FAKE_USER_ID = 0  # callback.message.from_user — это бот, не нажавший кнопку человек
+
+
 @dataclass
 class FakeCallbackQuery:
     data: str
     message: FakeMessage
+    from_user: FakeUser
     answered: list[str | None] = field(default_factory=list)
 
     async def answer(self, text: str | None = None, **kwargs) -> None:
         self.answered.append(text)
+
+
+def make_callback(data: str, message: FakeMessage, sender_id: int) -> FakeCallbackQuery:
+    """message.from_user всегда 'бот' (как в реальном aiogram — сообщение с
+    кнопкой отправил бот), sender_id — реальный нажавший кнопку пользователь."""
+    message.from_user = FakeUser(id=BOT_FAKE_USER_ID)
+    return FakeCallbackQuery(data=data, message=message, from_user=FakeUser(id=sender_id))
 
 
 def make_group_message(
@@ -533,22 +544,36 @@ async def test_cmd_start_attaches_main_menu(db_session):
 
 async def test_cb_stats_replies_and_acknowledges(db_session):
     msg = make_private_message(51, None, sender_id=WHITELISTED_USER_ID)
-    cb = FakeCallbackQuery(data=commands_module.CB_STATS, message=msg)
+    cb = make_callback(commands_module.CB_STATS, msg, sender_id=WHITELISTED_USER_ID)
     await commands_module.cb_stats(cb)
     assert "Всего ссылок в базе" in msg.sent[0]
     assert cb.answered == [None]
 
 
 async def test_cb_daily_digest_denied_for_non_whitelisted(db_session):
-    msg = make_private_message(52, None, sender_id=999999)
-    cb = FakeCallbackQuery(data=commands_module.CB_DAILY_DIGEST, message=msg)
+    msg = make_private_message(52, None, sender_id=WHITELISTED_USER_ID)
+    cb = make_callback(commands_module.CB_DAILY_DIGEST, msg, sender_id=999999)
     await commands_module.cb_daily_digest(cb)
     assert msg.sent == [NO_ACCESS_TEXT]
 
 
+async def test_cb_uses_clicking_user_not_bot_message_author(db_session):
+    # Регрессия: callback.message.from_user — это бот, а не нажавший кнопку
+    # человек. Whitelisted-пользователь жмёт кнопку под сообщением, которое
+    # формально "от бота" (id=0, не в whitelist) — доступ всё равно должен быть.
+    msg = make_private_message(521, None, sender_id=WHITELISTED_USER_ID)
+    cb = make_callback(commands_module.CB_STATS, msg, sender_id=WHITELISTED_USER_ID)
+    assert cb.message.from_user.id != WHITELISTED_USER_ID  # бот, не человек
+
+    await commands_module.cb_stats(cb)
+
+    assert "Всего ссылок в базе" in msg.sent[0]
+    assert NO_ACCESS_TEXT not in msg.sent
+
+
 async def test_cb_ask_sets_state_and_prompts(db_session):
     msg = make_private_message(53, None, sender_id=WHITELISTED_USER_ID)
-    cb = FakeCallbackQuery(data=commands_module.CB_ASK, message=msg)
+    cb = make_callback(commands_module.CB_ASK, msg, sender_id=WHITELISTED_USER_ID)
     state = make_state(WHITELISTED_USER_ID)
 
     await commands_module.cb_ask_prompt(cb, state)
@@ -559,7 +584,7 @@ async def test_cb_ask_sets_state_and_prompts(db_session):
 
 async def test_ask_button_flow_answers_next_message_as_question(db_session):
     prompt_msg = make_private_message(54, None, sender_id=WHITELISTED_USER_ID)
-    cb = FakeCallbackQuery(data=commands_module.CB_ASK, message=prompt_msg)
+    cb = make_callback(commands_module.CB_ASK, prompt_msg, sender_id=WHITELISTED_USER_ID)
     state = make_state(WHITELISTED_USER_ID)
     await commands_module.cb_ask_prompt(cb, state)
 
@@ -583,7 +608,7 @@ async def test_search_button_flow_answers_next_message_as_topic(db_session):
     await db_session.commit()
 
     prompt_msg = make_private_message(56, None, sender_id=WHITELISTED_USER_ID)
-    cb = FakeCallbackQuery(data=commands_module.CB_SEARCH, message=prompt_msg)
+    cb = make_callback(commands_module.CB_SEARCH, prompt_msg, sender_id=WHITELISTED_USER_ID)
     state = make_state(WHITELISTED_USER_ID)
     await commands_module.cb_search_prompt(cb, state)
 

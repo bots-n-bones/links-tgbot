@@ -9,7 +9,7 @@ import secrets
 import string
 from datetime import UTC, datetime
 
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, Message
 from sqlalchemy import select
 
 from db.models import AuthorizedUser, Invite
@@ -65,6 +65,21 @@ async def require_authorized(message: Message) -> bool:
     if message.chat.type != "private":
         return True
     return await require_whitelisted(message)
+
+
+async def require_authorized_callback(callback: CallbackQuery) -> bool:
+    """Для кнопок: callback.message.from_user — это БОТ (автор сообщения с
+    кнопкой), а не нажавший её человек — реальный пользователь только в
+    callback.from_user. Использовать require_authorized(callback.message)
+    здесь всегда проверяло бы whitelist для бота и отказывало всем."""
+    chat = callback.message.chat if callback.message else None
+    if chat is not None and chat.type != "private":
+        return True
+    if await is_whitelisted(callback.from_user.id):
+        return True
+    if callback.message:
+        await callback.message.answer(NO_ACCESS_TEXT)
+    return False
 
 
 async def redeem_invite(user_id: int, code: str) -> bool:

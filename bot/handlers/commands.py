@@ -7,7 +7,7 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy import func, select
 
 from api.routes.links import query_links
-from bot.access import create_invite, require_authorized
+from bot.access import create_invite, require_authorized, require_authorized_callback
 from bot.formatting import format_link_list_html, format_qa_reply_html
 from bot.keyboards import (
     CB_ASK,
@@ -193,7 +193,7 @@ async def cmd_stats(message: Message) -> None:
 
 @router.callback_query(F.data == CB_DAILY_DIGEST)
 async def cb_daily_digest(callback: CallbackQuery) -> None:
-    if not callback.message or not await require_authorized(callback.message):
+    if not callback.message or not await require_authorized_callback(callback):
         await callback.answer()
         return
     await callback.message.answer(await _daily_digest_text(), reply_markup=main_menu_keyboard())
@@ -202,7 +202,7 @@ async def cb_daily_digest(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data == CB_WEEKLY_DIGEST)
 async def cb_weekly_digest(callback: CallbackQuery) -> None:
-    if not callback.message or not await require_authorized(callback.message):
+    if not callback.message or not await require_authorized_callback(callback):
         await callback.answer()
         return
     await callback.message.answer(await _weekly_digest_text(), reply_markup=main_menu_keyboard())
@@ -211,7 +211,7 @@ async def cb_weekly_digest(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data == CB_STATS)
 async def cb_stats(callback: CallbackQuery) -> None:
-    if not callback.message or not await require_authorized(callback.message):
+    if not callback.message or not await require_authorized_callback(callback):
         await callback.answer()
         return
     await callback.message.answer(await _stats_text(), reply_markup=main_menu_keyboard())
@@ -220,7 +220,7 @@ async def cb_stats(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data == CB_HELP)
 async def cb_help(callback: CallbackQuery) -> None:
-    if not callback.message or not await require_authorized(callback.message):
+    if not callback.message or not await require_authorized_callback(callback):
         await callback.answer()
         return
     await callback.message.answer(HELP_TEXT, reply_markup=main_menu_keyboard())
@@ -229,7 +229,7 @@ async def cb_help(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data == CB_ASK)
 async def cb_ask_prompt(callback: CallbackQuery, state: FSMContext) -> None:
-    if not callback.message or not await require_authorized(callback.message):
+    if not callback.message or not await require_authorized_callback(callback):
         await callback.answer()
         return
     await state.set_state(MenuState.waiting_for_ask)
@@ -239,7 +239,7 @@ async def cb_ask_prompt(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(F.data == CB_SEARCH)
 async def cb_search_prompt(callback: CallbackQuery, state: FSMContext) -> None:
-    if not callback.message or not await require_authorized(callback.message):
+    if not callback.message or not await require_authorized_callback(callback):
         await callback.answer()
         return
     await state.set_state(MenuState.waiting_for_search)
