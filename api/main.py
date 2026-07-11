@@ -380,10 +380,16 @@ async def changelog_page(request: Request):
 
 
 @app.get("/posts", response_class=HTMLResponse)
-async def posts_page(request: Request, area: str | None = None, page: int = 1):
+async def posts_page(
+    request: Request,
+    tag: str | None = None,
+    area: str | None = None,
+    sort: str = "priority",
+    page: int = 1,
+):
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
-        result = await query_posts(session, area=area, page=page)
+        result = await query_posts(session, tag=tag, area=area, sort=sort, page=page)
         all_tags = await list_all_post_tags(session)
 
     return templates.TemplateResponse(
@@ -394,7 +400,9 @@ async def posts_page(request: Request, area: str | None = None, page: int = 1):
             "total": result.total,
             "page": result.page,
             "page_size": result.page_size,
+            "tag": tag,
             "area": area,
+            "sort": sort,
             "all_tags": all_tags,
         },
     )

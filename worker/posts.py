@@ -3,6 +3,9 @@
 Ссылки внутри поста по-прежнему идут по обычному link-пайплайну отдельно —
 здесь только пытаемся сослаться на уже созданные Link по url_hash."""
 
+import logging
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from aiogram import Bot
@@ -12,10 +15,23 @@ from db.models import Link, Post, PostTag, Tag
 from db.session import get_sessionmaker
 from shared.config import get_settings
 from shared.tag_normalizer import normalize_tags
+from shared.telegram_throttle import send_message_throttled
 from shared.url_normalizer import normalize_url, url_hash
 from worker.llm import get_llm_client, normalize_area
+from worker.priority import compute_priority_score
+
+logger = logging.getLogger(__name__)
 
 PHOTO_DIR = Path("api/static/posts")
+
+
+@dataclass
+class PostResult:
+    post_id: int
+    is_new: bool
+    area: str | None
+    tags: list[str]
+    link_count: int
 
 
 async def _download_post_photo(file_id: str) -> str | None:
@@ -35,7 +51,7 @@ async def _download_post_photo(file_id: str) -> str | None:
         await bot.session.close()
 
 
-async def process_post(payload: dict) -> int | None:
+async def _process_post_inner(payload: dict) -> PostResult:
     settings = get_settings()
     llm_client = get_llm_client()
     sessionmaker = get_sessionmaker()
@@ -49,7 +65,14 @@ async def process_post(payload: dict) -> int | None:
             )
         )
         if existing is not None:
-            return existing.id
+            await session.refresh(existing, attribute_names=["tags"])
+            return PostResult(
+                post_id=existing.id,
+                is_new=False,
+                area=existing.area,
+                tags=[t.name for t in existing.tags],
+                link_count=len(existing.link_ids or []),
+            )
 
         classification = await llm_client.classify_post(
             text=text or "(no text)", model=settings.openai_model_mini
@@ -69,6 +92,7 @@ async def process_post(payload: dict) -> int | None:
             if link is not None:
                 link_ids.append(link.id)
 
+        now = datetime.now(UTC)
         post = Post(
             chat_id=payload["chat_id"],
             message_id=payload["message_id"],
@@ -81,6 +105,7 @@ async def process_post(payload: dict) -> int | None:
             area=area,
             photo_url=photo_url,
             link_ids=link_ids,
+            priority_score=compute_priority_score(1, 1, now, now),
         )
         session.add(post)
         await session.flush()
@@ -95,4 +120,53 @@ async def process_post(payload: dict) -> int | None:
 
         await session.commit()
         await session.refresh(post)
-        return post.id
+        return PostResult(
+            post_id=post.id,
+            is_new=True,
+            area=area,
+            tags=tag_names,
+            link_count=len(link_ids),
+        )
+
+
+async def _notify(chat_id: int, text: str) -> None:
+    settings = get_settings()
+    if not settings.bot_token:
+        return
+    bot = Bot(token=settings.bot_token)
+    try:
+        await send_message_throttled(bot, chat_id, text)
+    finally:
+        await bot.session.close()
+
+
+def _success_text(result: PostResult) -> str:
+    if not result.is_new:
+        return "Этот пост уже есть в базе."
+    tags_text = ", ".join(result.tags) if result.tags else "—"
+    lines = [f"Добавил пост в базу. Area: {result.area or '—'}", f"Теги: {tags_text}"]
+    if result.link_count:
+        lines.append(f"Ссылок в посте: {result.link_count}")
+    return "\n".join(lines)
+
+
+async def process_post(payload: dict) -> int | None:
+    notify = bool(payload.get("notify"))
+    chat_id = payload.get("chat_id")
+
+    try:
+        result = await _process_post_inner(payload)
+    except Exception:
+        logger.exception(
+            "Не удалось обработать пост chat_id=%s message_id=%s",
+            payload.get("chat_id"),
+            payload.get("message_id"),
+        )
+        if notify and chat_id:
+            await _notify(chat_id, "Не смог добавить пост из-за ошибки. Попробуйте ещё раз позже.")
+        raise
+
+    if notify and chat_id:
+        await _notify(chat_id, _success_text(result))
+
+    return result.post_id

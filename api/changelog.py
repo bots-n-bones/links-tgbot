@@ -10,12 +10,23 @@ class ChangelogEntry:
     summary: list[str]
 
 
-CURRENT_VERSION = "1.4.1"
+CURRENT_VERSION = "1.4.2"
 
 # date: "YYYY-MM-DD HH:MM" — несколько релизов за день не редкость, время
 # нужно, чтобы порядок и дата были действительно проверяемы (см. git log),
 # а не проставлены на глаз задним числом.
 CHANGELOG: list[ChangelogEntry] = [
+    ChangelogEntry(
+        version="1.4.2",
+        date="2026-07-11 21:41",
+        summary=[
+            "Posts table now has the same filters as Links: tag dropdown and "
+            "sort by priority/date (priority uses the same recency-decay "
+            "formula, recomputed daily)",
+            "The bot now confirms in DM whether a forwarded post was saved, "
+            "was already in the base, or failed with an error",
+        ],
+    ),
     ChangelogEntry(
         version="1.4.1",
         date="2026-07-11 20:36",

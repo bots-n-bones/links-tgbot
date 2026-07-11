@@ -17,6 +17,7 @@ from db.models import (
     LinkSource,
     LinkStatus,
     LinkTag,
+    Post,
     RawMessage,
     ResearchReport,
     SourceType,
@@ -418,6 +419,11 @@ async def _recompute_all_priority_scores_async() -> None:
             link.priority_score = compute_priority_score(
                 link.source_count, link.unique_senders, last_source_at, now
             )
+
+        posts = (await session.execute(select(Post))).scalars().all()
+        for post in posts:
+            post.priority_score = compute_priority_score(1, 1, post.created_at, now)
+
         await session.commit()
 
 

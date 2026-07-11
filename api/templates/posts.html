@@ -8,20 +8,44 @@
 <div class="panel">
   <div class="panel-header">
     <span class="panel-title">Posts</span>
-    <details class="tag-select">
-      <summary>
-        {% if area %}<span class="swatch" style="--tag-color: var({{ area_color(area) }});"></span>{% endif %}
-        {{ area or "All areas" }}
-      </summary>
-      <div class="tag-select-menu">
-        <a class="tag-option" href="/posts">All areas</a>
-        {% for choice in area_choices %}
-          <a class="tag-option" href="/posts?area={{ choice }}">
-            <span class="swatch" style="--tag-color: var({{ area_color(choice) }});"></span>{{ choice }}
-          </a>
-        {% endfor %}
-      </div>
-    </details>
+    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+      <details class="tag-select">
+        <summary>
+          {% if tag %}<span class="swatch" style="--tag-color: var({{ tag_color(tag) }});"></span>{% endif %}
+          {{ tag or "All tags" }}
+        </summary>
+        <div class="tag-select-menu">
+          <a class="tag-option" href="/posts?area={{ area or '' }}&sort={{ sort }}">All tags</a>
+          {% for name, count in all_tags %}
+            <a class="tag-option" href="/posts?tag={{ name }}&area={{ area or '' }}&sort={{ sort }}">
+              <span class="swatch" style="--tag-color: var({{ tag_color(name) }});"></span>{{ name }} ({{ count }})
+            </a>
+          {% endfor %}
+        </div>
+      </details>
+      <details class="tag-select">
+        <summary>
+          {% if area %}<span class="swatch" style="--tag-color: var({{ area_color(area) }});"></span>{% endif %}
+          {{ area or "All areas" }}
+        </summary>
+        <div class="tag-select-menu">
+          <a class="tag-option" href="/posts?tag={{ tag or '' }}&sort={{ sort }}">All areas</a>
+          {% for choice in area_choices %}
+            <a class="tag-option" href="/posts?tag={{ tag or '' }}&area={{ choice }}&sort={{ sort }}">
+              <span class="swatch" style="--tag-color: var({{ area_color(choice) }});"></span>{{ choice }}
+            </a>
+          {% endfor %}
+        </div>
+      </details>
+      <form method="get" action="/posts">
+        <input type="hidden" name="tag" value="{{ tag or '' }}">
+        <input type="hidden" name="area" value="{{ area or '' }}">
+        <select name="sort" onchange="this.form.submit()">
+          <option value="priority" {% if sort == "priority" %}selected{% endif %}>By priority</option>
+          <option value="date" {% if sort == "date" %}selected{% endif %}>By date</option>
+        </select>
+      </form>
+    </div>
   </div>
 
   {% if posts %}
@@ -85,7 +109,7 @@
   {% set total_pages = ((total - 1) // page_size) + 1 %}
   <div class="pagination">
     {% for p in range(1, total_pages + 1) %}
-      <a href="/posts?area={{ area or '' }}&page={{ p }}">{{ p }}{% if p == page %} ●{% endif %}</a>
+      <a href="/posts?tag={{ tag or '' }}&area={{ area or '' }}&sort={{ sort }}&page={{ p }}">{{ p }}{% if p == page %} ●{% endif %}</a>
     {% endfor %}
   </div>
   {% endif %}

@@ -156,6 +156,10 @@ class Post(Base):
     area: Mapped[str | None] = mapped_column(String(50))
     photo_url: Mapped[str | None] = mapped_column(Text)
     link_ids: Mapped[list | None] = mapped_column(JSONB)
+    # Тот же recency-decay из worker/priority.py, что и у Link.priority_score
+    # (source_count=unique_senders=1 — у поста нет концепции повторных
+    # источников), пересчитывается той же ежедневной beat-задачей.
+    priority_score: Mapped[float] = mapped_column(default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     tags: Mapped[list["Tag"]] = relationship(secondary="post_tags", back_populates="posts")

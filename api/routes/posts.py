@@ -8,6 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db.models import Post, PostTag, Tag
 
 PAGE_SIZE = 20
+SORT_COLUMNS = {
+    "priority": Post.priority_score.desc(),
+    "date": Post.created_at.desc(),
+}
 
 
 @dataclass
@@ -21,22 +25,29 @@ class PostListResult:
 async def query_posts(
     session: AsyncSession,
     *,
+    tag: str | None = None,
     area: str | None = None,
+    sort: str = "priority",
     page: int = 1,
     page_size: int = PAGE_SIZE,
 ) -> PostListResult:
     conditions = []
+    if tag:
+        conditions.append(
+            Post.id.in_(
+                select(PostTag.post_id).join(Tag, Tag.id == PostTag.tag_id).where(Tag.name == tag)
+            )
+        )
     if area:
         conditions.append(Post.area == area)
 
+    order = SORT_COLUMNS.get(sort, SORT_COLUMNS["priority"])
     base_stmt = select(Post).where(*conditions)
     total = (
         await session.execute(select(func.count()).select_from(base_stmt.subquery()))
     ).scalar_one()
 
-    items_stmt = (
-        base_stmt.order_by(Post.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
-    )
+    items_stmt = base_stmt.order_by(order).offset((page - 1) * page_size).limit(page_size)
     items = list((await session.execute(items_stmt)).scalars().all())
     for post in items:
         await session.refresh(post, attribute_names=["tags"])

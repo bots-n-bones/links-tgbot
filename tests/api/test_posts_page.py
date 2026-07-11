@@ -76,3 +76,35 @@ async def test_posts_page_empty_state(db_session):
         resp = client.get("/posts")
     assert resp.status_code == 200
     assert "No posts yet." in resp.text
+
+
+async def test_posts_page_filters_by_tag(db_session):
+    from db.models import PostTag, Tag
+
+    tag = Tag(name="dev", slug="dev")
+    db_session.add(tag)
+    await db_session.commit()
+    await db_session.refresh(tag)
+
+    tagged = await _make_post(db_session, message_id=10)
+    await _make_post(db_session, message_id=11)
+    db_session.add(PostTag(post_id=tagged.id, tag_id=tag.id))
+    await db_session.commit()
+
+    with TestClient(app) as client:
+        resp = client.get("/posts", params={"tag": "dev"})
+    assert resp.status_code == 200
+    assert resp.text.count("Team chat —") == 1
+
+
+async def test_posts_page_sorts_by_priority(db_session):
+    low = await _make_post(db_session, message_id=20)
+    high = await _make_post(db_session, message_id=21)
+    low.priority_score = 1.0
+    high.priority_score = 9.0
+    await db_session.commit()
+
+    with TestClient(app) as client:
+        resp = client.get("/posts", params={"sort": "priority"})
+    assert resp.status_code == 200
+    assert resp.text.index(f"preview-{high.id}") < resp.text.index(f"preview-{low.id}")

@@ -1,8 +1,11 @@
 import hashlib
 
+import pytest
 from sqlalchemy import select
 
+import worker.posts as posts_module
 from db.models import Link, LinkStatus, Post
+from shared import config as config_module
 from worker.posts import process_post
 
 
@@ -93,3 +96,133 @@ async def test_process_post_without_text_still_gets_summary(db_session):
     )
     post = await db_session.get(Post, post_id)
     assert post.summary  # не пусто, даже без текста
+
+
+async def test_process_post_sets_priority_score(db_session):
+    post_id = await process_post(
+        {
+            "chat_id": -100123,
+            "message_id": 5,
+            "chat_title": "Team chat",
+            "sender_id": 5,
+            "sender_name": "Alice",
+            "text": "hello",
+            "urls": [],
+            "post_url": "https://t.me/c/123/5",
+        }
+    )
+    post = await db_session.get(Post, post_id)
+    assert post.priority_score > 0
+
+
+@pytest.fixture
+def _bot_token(monkeypatch):
+    monkeypatch.setenv("BOT_TOKEN", "123456789:AAFakeTokenForTestsOnly000000000")
+    config_module.get_settings.cache_clear()
+    yield
+    config_module.get_settings.cache_clear()
+
+
+async def test_process_post_notifies_on_success_when_new(db_session, _bot_token, monkeypatch):
+    sent = []
+
+    async def fake_send(bot, chat_id, text, **kwargs):
+        sent.append((chat_id, text))
+
+    monkeypatch.setattr(posts_module, "send_message_throttled", fake_send)
+
+    await process_post(
+        {
+            "chat_id": 42,
+            "message_id": 6,
+            "chat_title": "DM",
+            "sender_id": 5,
+            "sender_name": "Alice",
+            "text": "hello",
+            "urls": [],
+            "post_url": "https://t.me/c/1/6",
+            "notify": True,
+        }
+    )
+
+    assert len(sent) == 1
+    chat_id, text = sent[0]
+    assert chat_id == 42
+    assert "Добавил пост в базу" in text
+
+
+async def test_process_post_notifies_already_saved_on_duplicate(db_session, _bot_token, monkeypatch):
+    sent = []
+
+    async def fake_send(bot, chat_id, text, **kwargs):
+        sent.append((chat_id, text))
+
+    monkeypatch.setattr(posts_module, "send_message_throttled", fake_send)
+
+    payload = {
+        "chat_id": 42,
+        "message_id": 7,
+        "chat_title": "DM",
+        "sender_id": 5,
+        "sender_name": "Alice",
+        "text": "hello",
+        "urls": [],
+        "post_url": "https://t.me/c/1/7",
+        "notify": True,
+    }
+    await process_post(payload)
+    sent.clear()
+    await process_post(payload)
+
+    assert len(sent) == 1
+    assert "уже есть в базе" in sent[0][1]
+
+
+async def test_process_post_notifies_on_error_and_reraises(db_session, _bot_token, monkeypatch):
+    sent = []
+
+    async def fake_send(bot, chat_id, text, **kwargs):
+        sent.append((chat_id, text))
+
+    monkeypatch.setattr(posts_module, "send_message_throttled", fake_send)
+
+    async def broken_inner(payload):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(posts_module, "_process_post_inner", broken_inner)
+
+    with pytest.raises(RuntimeError):
+        await process_post(
+            {
+                "chat_id": 42,
+                "message_id": 8,
+                "notify": True,
+            }
+        )
+
+    assert len(sent) == 1
+    assert "ошибк" in sent[0][1].lower()
+
+
+async def test_process_post_does_not_notify_without_notify_flag(db_session, _bot_token, monkeypatch):
+    sent = []
+
+    async def fake_send(bot, chat_id, text, **kwargs):
+        sent.append((chat_id, text))
+
+    monkeypatch.setattr(posts_module, "send_message_throttled", fake_send)
+
+    await process_post(
+        {
+            "chat_id": -100123,
+            "message_id": 9,
+            "chat_title": "Team chat",
+            "sender_id": 5,
+            "sender_name": "Alice",
+            "text": "hello",
+            "urls": [],
+            "post_url": "https://t.me/c/123/9",
+        }
+    )
+
+    assert sent == []

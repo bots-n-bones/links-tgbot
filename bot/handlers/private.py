@@ -93,6 +93,7 @@ async def handle_private_message(message: Message, state: FSMContext) -> None:
     # постом не считаем — см. bot/post_capture.py.
     if is_public_channel_forward(message):
         payload = build_post_payload(message, urls)
+        payload["notify"] = True  # F: личка — воркер подтвердит добавление/ошибку
         enqueue_post_processing(payload, countdown=20 if urls else 0)
         if not urls:
             return  # чистый форвард без ссылок — сохранили пост, дальше нечего делать

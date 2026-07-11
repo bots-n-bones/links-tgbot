@@ -235,6 +235,26 @@ async def test_recompute_all_priority_scores_uses_last_source(db_session):
     assert link.priority_score == pytest.approx(1.0 + 2.0 + 1.1, abs=0.05)
 
 
+async def test_recompute_all_priority_scores_also_recomputes_posts(db_session):
+    from db.models import Post
+
+    now = datetime.now(UTC)
+    post = Post(
+        chat_id=-100123,
+        message_id=1,
+        post_url="https://t.me/c/123/1",
+        priority_score=0,
+        created_at=now - timedelta(days=7),
+    )
+    db_session.add(post)
+    await db_session.commit()
+
+    await tasks_module._recompute_all_priority_scores_async()
+
+    await db_session.refresh(post)
+    assert post.priority_score == pytest.approx(1.0 + 2.0 + 1.1, abs=0.05)
+
+
 async def test_poll_unprocessed_batch_enqueues_only_unprocessed(db_session, monkeypatch):
     rm1 = await _add_raw_message(db_session, chat_id=1, message_id=10, text="https://a.com")
     rm2 = await _add_raw_message(db_session, chat_id=1, message_id=11, text="https://b.com")
