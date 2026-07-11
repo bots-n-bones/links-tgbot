@@ -75,6 +75,7 @@ async def run_polling() -> None:
     await bot.delete_webhook(drop_pending_updates=True)
     await _setup_commands(bot)
     me = await bot.get_me()
+    dp["bot_username"] = me.username
     logger.info("Бот запущен: @%s (id=%s), RUN_MODE=polling", me.username, me.id)
     await dp.start_polling(bot)
 
@@ -92,6 +93,7 @@ async def run_webhook() -> None:
     await _set_webhook_with_retry(bot, webhook_url, secret)
     await _setup_commands(bot)
     me = await bot.get_me()
+    dp["bot_username"] = me.username
     logger.info(
         "Бот запущен: @%s (id=%s), RUN_MODE=webhook, url=%s", me.username, me.id, webhook_url
     )

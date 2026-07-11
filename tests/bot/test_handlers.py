@@ -36,6 +36,9 @@ class FakeMessage:
     async def answer(self, text: str, **kwargs) -> None:
         self.sent.append(text)
 
+    async def reply(self, text: str, **kwargs) -> None:
+        self.sent.append(text)
+
 
 def make_group_message(message_id: int, text: str, sender_id: int = 1) -> FakeMessage:
     return FakeMessage(
@@ -124,6 +127,29 @@ async def test_group_handler_idempotent_on_duplicate_message(db_session, monkeyp
     assert len(enqueued) == 1  # второй раз не поставлено в очередь
 
 
+async def test_group_handler_ignores_plain_mention_without_bot_username(db_session):
+    # без bot_username (не передан из workflow_data) — мы не можем узнать, что
+    # это обращение к боту, тихо игнорируем
+    msg = make_group_message(6, "@testbot а что там про RAG?")
+    await group_module.handle_group_message(msg)
+    assert msg.sent == []
+
+
+async def test_group_handler_replies_to_mention_without_citations(db_session):
+    # ENV=test => FakeLLMClient/FakeEmbeddingClient (см. tests/bot/conftest.py)
+    msg = make_group_message(7, "@testbot а что там про RAG?")
+    await group_module.handle_group_message(msg, bot_username="testbot")
+    assert len(msg.sent) == 1
+    assert "Фейковый ответ LLM." in msg.sent[0]
+    assert "Источники" not in msg.sent[0]
+
+
+async def test_group_handler_mention_is_case_insensitive_and_stripped(db_session):
+    msg = make_group_message(8, "@TestBot есть что про RAG?")
+    await group_module.handle_group_message(msg, bot_username="testbot")
+    assert len(msg.sent) == 1
+
+
 # --- private handler: whitelist ---
 
 
@@ -181,6 +207,8 @@ async def test_private_handler_whitelisted_no_url_routes_to_qa(db_session):
     await private_module.handle_private_message(msg)
     assert len(msg.sent) == 1
     assert "Фейковый ответ LLM." in msg.sent[0]
+    # свободный текст (не /ask) — просто ответ, без списка источников
+    assert "Источники" not in msg.sent[0]
 
 
 async def test_private_handler_whitelisted_no_text_routes_to_help_hint(db_session):
@@ -271,8 +299,7 @@ async def test_cmd_search_returns_bare_list(db_session):
     msg = make_private_message(26, "/search RAG", sender_id=WHITELISTED_USER_ID)
     await commands_module.cmd_search(msg, FakeCommandObject(args="RAG"))
     assert len(msg.sent) == 1
-    assert "Статья про RAG" in msg.sent[0]
-    assert "https://a.com" in msg.sent[0]
+    assert '<a href="https://a.com">Статья про RAG</a>' in msg.sent[0]
 
 
 async def test_cmd_search_no_results(db_session):
@@ -285,6 +312,21 @@ async def test_cmd_digest_no_collections_yet(db_session):
     msg = make_private_message(28, "/digest", sender_id=WHITELISTED_USER_ID)
     await commands_module.cmd_digest(msg)
     assert "Подборок пока нет" in msg.sent[0]
+
+
+# --- commands: работают в группах без whitelist ---
+
+
+async def test_cmd_start_works_in_group_for_non_whitelisted_sender():
+    msg = make_group_message(40, "/start", sender_id=999999)  # не в whitelist, но группа доверена
+    await commands_module.cmd_start(msg)
+    assert msg.sent == [commands_module.START_TEXT]
+
+
+async def test_cmd_stats_works_in_group_for_non_whitelisted_sender(db_session):
+    msg = make_group_message(41, "/stats", sender_id=999999)
+    await commands_module.cmd_stats(msg)
+    assert "Всего ссылок в базе" in msg.sent[0]
 
 
 async def test_cmd_digest_returns_latest_collection(db_session):

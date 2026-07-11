@@ -58,6 +58,15 @@ async def require_whitelisted(message: Message) -> bool:
     return False
 
 
+async def require_authorized(message: Message) -> bool:
+    """Как require_whitelisted, но пропускает проверку в группах — там доступ
+    уже ограничен на уровне списка участников чата (решение №1 в плане),
+    команды в группе доступны всем."""
+    if message.chat.type != "private":
+        return True
+    return await require_whitelisted(message)
+
+
 async def redeem_invite(user_id: int, code: str) -> bool:
     """Пытается погасить инвайт-код и выдать доступ. True при успехе."""
     normalized = code.strip().upper()

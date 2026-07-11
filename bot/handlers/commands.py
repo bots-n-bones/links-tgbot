@@ -6,15 +6,15 @@ from aiogram.types import Message
 from sqlalchemy import func, select
 
 from api.routes.links import query_links
-from bot.access import create_invite, require_whitelisted
-from bot.formatting import format_qa_reply
+from bot.access import create_invite, require_authorized
+from bot.formatting import format_link_list_html, format_qa_reply_html
 from db.models import Collection, Link, LinkSource, LinkTag, Tag
 from db.session import get_sessionmaker
 from shared.config import get_settings
 from worker.rag import answer_question
 
 router = Router(name="commands")
-router.message.filter(F.chat.type == "private")
+router.message.filter(F.chat.type.in_({"private", "group", "supergroup"}))
 
 START_TEXT = (
     "Привет! Я собираю полезные ссылки команды.\n\n"
@@ -35,14 +35,14 @@ HELP_TEXT = (
 
 @router.message(Command("start"))
 async def cmd_start(message: Message) -> None:
-    if not await require_whitelisted(message):
+    if not await require_authorized(message):
         return
     await message.answer(START_TEXT)
 
 
 @router.message(Command("help"))
 async def cmd_help(message: Message) -> None:
-    if not await require_whitelisted(message):
+    if not await require_authorized(message):
         return
     await message.answer(HELP_TEXT)
 
@@ -65,7 +65,7 @@ async def cmd_invite(message: Message) -> None:
 
 @router.message(Command("ask"))
 async def cmd_ask(message: Message, command: CommandObject) -> None:
-    if not await require_whitelisted(message):
+    if not await require_authorized(message):
         return
     question = (command.args or "").strip()
     if not question:
@@ -74,13 +74,13 @@ async def cmd_ask(message: Message, command: CommandObject) -> None:
     result = await answer_question(
         question, user_id=message.from_user.id if message.from_user else None
     )
-    await message.answer(format_qa_reply(result))
+    await message.answer(format_qa_reply_html(result), parse_mode="HTML")
 
 
 @router.message(Command("search"))
 async def cmd_search(message: Message, command: CommandObject) -> None:
     """F-search: краткий список ссылок по теме, без LLM-прозы (в отличие от /ask)."""
-    if not await require_whitelisted(message):
+    if not await require_authorized(message):
         return
     topic = (command.args or "").strip()
     if not topic:
@@ -95,13 +95,12 @@ async def cmd_search(message: Message, command: CommandObject) -> None:
         await message.answer("Ничего не найдено.")
         return
 
-    lines = [f"- {link.title or link.url} ({link.url})" for link in result.items]
-    await message.answer("\n".join(lines))
+    await message.answer(format_link_list_html(result.items), parse_mode="HTML")
 
 
 @router.message(Command("digest"))
 async def cmd_digest(message: Message) -> None:
-    if not await require_whitelisted(message):
+    if not await require_authorized(message):
         return
 
     sessionmaker = get_sessionmaker()
@@ -120,7 +119,7 @@ async def cmd_digest(message: Message) -> None:
 
 @router.message(Command("stats"))
 async def cmd_stats(message: Message) -> None:
-    if not await require_whitelisted(message):
+    if not await require_authorized(message):
         return
 
     cutoff = datetime.now(UTC) - timedelta(days=7)
