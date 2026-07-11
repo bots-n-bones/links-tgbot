@@ -15,20 +15,11 @@ def test_tag_color_varies_by_name():
 
 
 def test_clicks_label_singular():
-    assert clicks_label(1) == "переход"
-    assert clicks_label(21) == "переход"
+    assert clicks_label(1) == "click"
 
 
-def test_clicks_label_few():
-    assert clicks_label(2) == "перехода"
-    assert clicks_label(3) == "перехода"
-    assert clicks_label(4) == "перехода"
-    assert clicks_label(22) == "перехода"
-
-
-def test_clicks_label_many():
-    assert clicks_label(0) == "переходов"
-    assert clicks_label(5) == "переходов"
-    assert clicks_label(11) == "переходов"
-    assert clicks_label(12) == "переходов"
-    assert clicks_label(111) == "переходов"
+def test_clicks_label_plural():
+    assert clicks_label(0) == "clicks"
+    assert clicks_label(2) == "clicks"
+    assert clicks_label(11) == "clicks"
+    assert clicks_label(111) == "clicks"

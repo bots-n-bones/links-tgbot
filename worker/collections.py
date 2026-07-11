@@ -18,20 +18,20 @@ DAILY_TOP3_WINDOW_DAYS = 7  # "новые материалы" — активно
 DAILY_TOP3_LIMIT = 3
 
 COLLECTION_SYSTEM_PROMPT = (
-    "Ты аналитик, который готовит для команды еженедельную подборку полезных материалов."
+    "You are an analyst preparing the team's weekly digest of useful materials."
 )
 
-COLLECTION_PROMPT_TEMPLATE = """Вот ссылки, которые команда сохраняла за неделю по теме "{theme}":
+COLLECTION_PROMPT_TEMPLATE = """Here are the links the team saved this week on the topic "{theme}":
 
 {links_with_descriptions_and_counts}
 
-Составь тематическую подборку на русском:
-1. Главное за неделю (2-3 предложения)
-2. Топ материалов по востребованности (с кратким пояснением)
-3. Что не пропустить
-4. Наблюдения (новые тренды, теги)
+Write a themed digest in English:
+1. Highlights of the week (2-3 sentences)
+2. Top materials by demand (with a brief note on each)
+3. Don't miss
+4. Observations (new trends, tags)
 
-Формат: markdown."""
+Format: markdown."""
 
 
 async def _links_for_tag_in_window(
@@ -55,8 +55,8 @@ async def _links_for_tag_in_window(
 
 def _format_links_block(links: list[Link]) -> str:
     return "\n".join(
-        f"- [{link.title or link.url}]({link.url}) — {link.description or 'без описания'} "
-        f"(добавляли {link.source_count} раз, приоритет {link.priority_score:.1f})"
+        f"- [{link.title or link.url}]({link.url}) — {link.description or 'no description'} "
+        f"(added {link.source_count} times, priority {link.priority_score:.1f})"
         for link in links
     )
 
@@ -87,11 +87,11 @@ async def generate_daily_top3(*, now: datetime | None = None) -> Collection | No
             return None
 
         collection = Collection(
-            title="Топ-3 новых материала",
+            title="Top 3 new picks",
             theme=DAILY_TOP3_THEME,
             period_start=period_start.date(),
             period_end=period_end.date(),
-            summary_md="Автоматический отбор по востребованности за последнюю неделю.",
+            summary_md="Automatic pick by demand over the last week.",
             link_ids=[link.id for link in top_links],
         )
         session.add(collection)
@@ -137,7 +137,7 @@ async def generate_weekly_collection(*, now: datetime | None = None) -> Collecti
         )
 
         collection = Collection(
-            title=f"Подборка за {theme}",
+            title=f"Digest for {theme}",
             theme=theme,
             period_start=period_start.date(),
             period_end=period_end.date(),

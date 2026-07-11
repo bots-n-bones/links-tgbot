@@ -1,16 +1,20 @@
 <div id="links-list">
-{% for link in links %}
-  {% include "_link_card.html" %}
+{% if links %}
+<div class="row-list">
+  {% for link in links %}
+    {% include "_link_card.html" %}
+  {% endfor %}
+</div>
 {% else %}
-  <p>Ничего не найдено.</p>
-{% endfor %}
+  <p class="panel-empty">Nothing found.</p>
+{% endif %}
 
 {% if total > page_size %}
 {% set total_pages = ((total - 1) // page_size) + 1 %}
 <div class="pagination">
   {% for p in range(1, total_pages + 1) %}
     <a href="#"
-       hx-get="/partials/links?q={{ q or '' }}&tag={{ tag or '' }}&chat={{ chat or '' }}&sort={{ sort }}&page={{ p }}"
+       hx-get="/partials/links?tag={{ tag or '' }}&sort={{ sort }}&page={{ p }}"
        hx-target="#links-list" hx-swap="outerHTML">{{ p }}{% if p == page %} ●{% endif %}</a>
   {% endfor %}
 </div>

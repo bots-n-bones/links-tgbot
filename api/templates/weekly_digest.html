@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Weekly digest — Nova-260{% endblock %}
+{% block content %}
+<div class="eyebrow">Weekly digest</div>
+<h1>Weekly digests</h1>
+
+<div class="panel">
+  <div class="panel-note">{{ schedule_note }}</div>
+  {% if collections %}
+    {% for c in collections %}
+      <div class="card" style="margin: 16px 20px;">
+        <div class="card-title">{{ c.title }}</div>
+        <div class="card-meta">
+          Period: {{ c.period_start }} — {{ c.period_end }} · collected {{ c.created_at.strftime('%b %d, %Y at %H:%M') }}
+        </div>
+        <div class="markdown-block">{{ c.summary_md }}</div>
+      </div>
+    {% endfor %}
+  {% else %}
+    <p class="panel-empty">No digests yet — the first one will be collected automatically on schedule.</p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -7,9 +7,9 @@
   </div>
   <p class="card-meta">
     {{ link.click_count }} {{ clicks_label(link.click_count) }}
-    {% if link.click_count >= 3 %}<span class="badge">Популярно</span>{% endif %}
+    {% if link.click_count >= 3 %}<span class="badge">Popular</span>{% endif %}
   </p>
-  <div class="card-actions" style="border-top: none; padding-top: 0;">
-    <button hx-get="/links/{{ link.id }}/detail-edit-form" hx-target="#link-{{ link.id }}" hx-swap="outerHTML">Редактировать</button>
+  <div class="row-actions" style="margin-top: 12px;">
+    <button class="btn" hx-get="/links/{{ link.id }}/detail-edit-form" hx-target="#link-{{ link.id }}" hx-swap="outerHTML">Edit</button>
   </div>
 </div>

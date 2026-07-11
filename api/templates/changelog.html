@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Changelog — Nova-260{% endblock %}
+{% block content %}
+<a href="/" class="back-link">&larr; back</a>
+<div class="eyebrow">Changelog</div>
+<h1>Version history</h1>
+
+<div class="panel">
+  <table class="version-table">
+    <thead>
+      <tr>
+        <th>Version</th>
+        <th>Date</th>
+        <th>Changes</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for entry in changelog %}
+        <tr>
+          <td class="v-num">v{{ entry.version }}{% if entry.version == current_version %} <span class="badge">Current</span>{% endif %}</td>
+          <td class="v-date">{{ entry.date }}</td>
+          <td>
+            <ul>
+              {% for line in entry.summary %}<li>{{ line }}</li>{% endfor %}
+            </ul>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

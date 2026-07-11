@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Daily digest — Nova-260{% endblock %}
+{% block content %}
+<div class="eyebrow">Daily digest</div>
+<h1>Daily top picks</h1>
+<p class="card-meta" style="margin-bottom: 20px;">Refreshed automatically every day at 12:00 MSK, based on demand over the last 7 days.</p>
+
+{% if latest_collection %}
+<div class="panel">
+  <div class="panel-header">
+    <span class="panel-title">Latest — {{ latest_collection.created_at.strftime('%b %d, %Y at %H:%M') }}</span>
+  </div>
+  <div class="row-list">
+    {% for link in latest_links %}
+      <div class="row-item">
+        <div class="row-main">
+          <div class="row-title">
+            <span class="click-count">{{ "%02d"|format(loop.index) }}</span>
+            <a href="/links/{{ link.id }}">{{ link.title or link.url }}</a>
+          </div>
+          {% if link.description %}<p class="row-desc">{{ link.description }}</p>{% endif %}
+        </div>
+        <div class="row-actions">
+          <a class="btn" href="/links/{{ link.id }}">View</a>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% else %}
+<div class="panel"><p class="panel-empty">No digest yet — the first one will be collected automatically.</p></div>
+{% endif %}
+
+{% if history %}
+<h2>History</h2>
+<div class="panel">
+  <div class="row-list">
+    {% for collection, links in history %}
+      <div class="row-item">
+        <div class="row-main">
+          <div class="row-title">{{ collection.created_at.strftime('%b %d, %Y at %H:%M') }}</div>
+          <div class="row-meta">
+            {% for link in links %}<a href="/links/{{ link.id }}">{{ link.title or link.url }}</a>{% if not loop.last %} · {% endif %}{% endfor %}
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}

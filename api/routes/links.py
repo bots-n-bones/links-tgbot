@@ -122,23 +122,6 @@ async def get_latest_daily_top3(session: AsyncSession) -> tuple[Collection | Non
     return collection, links
 
 
-async def find_similar_links(session: AsyncSession, link: Link, *, limit: int = 5) -> list[Link]:
-    """Похожие ссылки в нашей базе по embedding (cosine distance) — без LLM,
-    чистый векторный поиск."""
-    if link.embedding is None:
-        return []
-    stmt = (
-        select(Link)
-        .where(Link.id != link.id, Link.is_hidden.is_(False), Link.embedding.is_not(None))
-        .order_by(Link.embedding.cosine_distance(link.embedding))
-        .limit(limit)
-    )
-    items = list((await session.execute(stmt)).scalars().all())
-    for item in items:
-        await session.refresh(item, attribute_names=["tags"])
-    return items
-
-
 async def list_all_tags(session: AsyncSession) -> list[tuple[str, int]]:
     stmt = (
         select(Tag.name, func.count(LinkTag.link_id))

@@ -68,7 +68,7 @@ async def test_answer_question_ranks_closest_link_first(db_session, monkeypatch)
     assert result.matched_links[0].url == "https://close.com"
     assert "https://close.com" in result.answer
     assert "https://hallucinated.com" not in result.answer
-    assert "[ссылка недоступна]" in result.answer
+    assert "[link unavailable]" in result.answer
 
     logs = (await db_session.execute(select(QALog))).scalars().all()
     assert len(logs) == 1
@@ -119,7 +119,7 @@ def test_strip_hallucinated_urls_keeps_allowed_and_masks_others():
     cleaned = _strip_hallucinated_urls(text, allowed_urls={"https://a.com/x"})
     assert "https://a.com/x" in cleaned
     assert "https://evil.com/y" not in cleaned
-    assert "[ссылка недоступна]" in cleaned
+    assert "[link unavailable]" in cleaned
 
 
 def test_strip_hallucinated_urls_no_urls_unchanged():

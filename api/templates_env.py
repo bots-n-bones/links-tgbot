@@ -3,6 +3,8 @@ from pathlib import Path
 
 from fastapi.templating import Jinja2Templates
 
+from api.changelog import CURRENT_VERSION
+
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
@@ -22,13 +24,9 @@ def tag_color(name: str) -> str:
 
 
 def clicks_label(count: int) -> str:
-    """Русское склонение: 1 переход, 2-4 перехода, 0/5+/11-14 переходов."""
-    if count % 10 == 1 and count % 100 != 11:
-        return "переход"
-    if count % 10 in (2, 3, 4) and count % 100 not in (12, 13, 14):
-        return "перехода"
-    return "переходов"
+    return "click" if count == 1 else "clicks"
 
 
 templates.env.globals["tag_color"] = tag_color
 templates.env.globals["clicks_label"] = clicks_label
+templates.env.globals["current_version"] = CURRENT_VERSION

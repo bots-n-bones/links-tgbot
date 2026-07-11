@@ -45,9 +45,9 @@ async def test_get_collection_404(db_session):
     assert resp.status_code == 404
 
 
-async def test_collections_dashboard_page_renders(db_session):
+async def test_weekly_digest_dashboard_page_renders(db_session):
     await _make_collection(db_session)
     with TestClient(app) as client:
-        resp = client.get("/collections")
+        resp = client.get("/weekly-digest")
     assert resp.status_code == 200
     assert "Подборка недели" in resp.text

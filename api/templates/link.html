@@ -1,25 +1,20 @@
 {% extends "base.html" %}
 {% block content %}
-<a href="/" class="back-link">&larr; назад</a>
+<a href="/" class="back-link">&larr; back</a>
 
 {% include "_link_detail_view.html" %}
 
-<h2>Источники</h2>
+<h2>Sources</h2>
 <ul class="sources-list">
   {% for s in link.sources %}
-    <li>{{ s.source_type.value }} — {{ s.chat_title or 'личка' }} — {{ s.sender_name or s.sender_id }} — {{ s.created_at.strftime('%Y-%m-%d %H:%M') }}</li>
+    <li>{{ s.source_type.value }} — {{ s.chat_title or 'DM' }} — {{ s.sender_name or s.sender_id }} — {{ s.created_at.strftime('%Y-%m-%d %H:%M') }}</li>
   {% else %}
-    <li>Источников пока нет.</li>
+    <li>No sources yet.</li>
   {% endfor %}
 </ul>
 
-<h2>Похожие материалы</h2>
-<div id="similar-links">
-  <button hx-get="/links/{{ link.id }}/similar" hx-target="#similar-links" hx-swap="outerHTML">Найти похожие</button>
-</div>
-
-<h2>Research-отчёт</h2>
+<h2>Research report</h2>
 <div id="research-result">
-  <button class="btn-primary" hx-post="/links/{{ link.id }}/research" hx-target="#research-result" hx-swap="outerHTML">Собрать ещё</button>
+  <button class="btn btn-primary" hx-post="/links/{{ link.id }}/research" hx-target="#research-result" hx-swap="outerHTML">Run research</button>
 </div>
 {% endblock %}

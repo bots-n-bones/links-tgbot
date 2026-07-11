@@ -1,44 +1,44 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="eyebrow">Team knowledge base</div>
-
-{% if top3_links %}
-<div class="top-block">
-  <h2>Топ-3 новых материала</h2>
-  {% for link in top3_links %}
-    <div class="top-row">
-      <span class="top-rank">{{ "%02d"|format(loop.index) }}</span>
-      <a href="/links/{{ link.id }}">{{ link.title or link.url }}</a>
-    </div>
-  {% endfor %}
-  <p class="card-meta" style="margin: 10px 0 0;">Собрано {{ top3_collection.created_at.strftime('%d.%m.%Y в %H:%M') }} · обновляется каждый день в 12:00</p>
-</div>
-{% endif %}
-
+<div class="eyebrow">ASK ME...</div>
 <div class="ask-block">
   <form hx-post="/ask" hx-target="#ask-result" hx-swap="innerHTML" hx-indicator="#ask-loading">
-    <input type="text" name="question" placeholder="Спросить базу… например: есть ли у нас что-то про RAG?">
-    <button type="submit">Спросить</button>
+    <input type="text" name="question" placeholder="Ask the knowledge base… e.g. do we have anything about RAG?">
+    <button type="submit" class="btn btn-primary">Ask</button>
   </form>
-  <span id="ask-loading" class="htmx-indicator">Ищу…</span>
+  <span id="ask-loading" class="htmx-indicator">Searching…</span>
   <div id="ask-result"></div>
 </div>
 
-<form class="filters" hx-get="/partials/links" hx-target="#links-list" hx-swap="outerHTML" hx-trigger="change, submit">
-  <input type="text" name="q" placeholder="Поиск…" value="{{ q or '' }}">
-  <select name="tag">
-    <option value="">Все теги</option>
-    {% for name, count in all_tags %}
-      <option value="{{ name }}" {% if tag == name %}selected{% endif %}>{{ name }} ({{ count }})</option>
-    {% endfor %}
-  </select>
-  <input type="text" name="chat" placeholder="Чат…" value="{{ chat or '' }}">
-  <select name="sort">
-    <option value="priority" {% if sort == "priority" %}selected{% endif %}>По приоритету</option>
-    <option value="clicks" {% if sort == "clicks" %}selected{% endif %}>По популярности</option>
-    <option value="date" {% if sort == "date" %}selected{% endif %}>По дате</option>
-  </select>
-</form>
-
-{% include "_links_list.html" %}
+<div class="panel">
+  <div class="panel-header">
+    <span class="panel-title">Links</span>
+    <form class="filters" hx-get="/partials/links" hx-target="#links-list" hx-swap="outerHTML" hx-trigger="change">
+      <details class="tag-select">
+        <summary>
+          {% if tag %}<span class="swatch" style="--tag-color: var({{ tag_color(tag) }});"></span>{% endif %}
+          {{ tag or "All tags" }}
+        </summary>
+        <div class="tag-select-menu">
+          <a class="tag-option" href="#"
+             hx-get="/partials/links?tag=&sort={{ sort }}" hx-target="#links-list" hx-swap="outerHTML"
+             onclick="this.closest('details').open=false">All tags</a>
+          {% for name, count in all_tags %}
+            <a class="tag-option" href="#"
+               hx-get="/partials/links?tag={{ name }}&sort={{ sort }}" hx-target="#links-list" hx-swap="outerHTML"
+               onclick="this.closest('details').open=false">
+              <span class="swatch" style="--tag-color: var({{ tag_color(name) }});"></span>{{ name }} ({{ count }})
+            </a>
+          {% endfor %}
+        </div>
+      </details>
+      <select name="sort">
+        <option value="priority" {% if sort == "priority" %}selected{% endif %}>By priority</option>
+        <option value="clicks" {% if sort == "clicks" %}selected{% endif %}>By popularity</option>
+        <option value="date" {% if sort == "date" %}selected{% endif %}>By date</option>
+      </select>
+    </form>
+  </div>
+  {% include "_links_list.html" %}
+</div>
 {% endblock %}

@@ -2,17 +2,17 @@
 <div id="research-result" class="card">
   <div class="markdown-block">{{ report.report_md }}</div>
   {% if report.sources %}
-  <p class="card-meta" style="margin-top: 12px;">Источников найдено: {{ report.sources|length }}</p>
+  <p class="card-meta" style="margin-top: 12px;">Sources found: {{ report.sources|length }}</p>
   {% endif %}
-  <div class="card-actions" style="border-top: none; padding-top: 14px;">
-    <button hx-post="/research/{{ report.id }}/add-links" hx-target="#add-links-result" hx-swap="innerHTML">
-      Добавить найденные ссылки в базу
+  <div class="card-actions">
+    <button class="btn" hx-post="/research/{{ report.id }}/add-links" hx-target="#add-links-result" hx-swap="innerHTML">
+      Add found links to the database
     </button>
   </div>
   <div id="add-links-result"></div>
 </div>
 {% else %}
 <div id="research-result" class="card" hx-get="/links/{{ link_id }}/research/status" hx-trigger="load delay:3s" hx-swap="outerHTML">
-  <p class="card-meta" style="margin: 0;">Ищу… пишу отчёт… (обычно 30-60 сек)</p>
+  <p class="card-meta" style="margin: 0;">Researching… writing the report… (usually 30-60 sec)</p>
 </div>
 {% endif %}

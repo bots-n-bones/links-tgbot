@@ -1,7 +1,0 @@
-<div class="similar-links" id="similar-links">
-  {% for link in similar %}
-    <a href="/links/{{ link.id }}">{{ link.title or link.url }}</a>
-  {% else %}
-    <p class="similar-empty">Похожих материалов в базе не нашлось.</p>
-  {% endfor %}
-</div>

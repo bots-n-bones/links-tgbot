@@ -193,23 +193,22 @@ async def test_index_page_has_no_old_top_block(db_session):
     assert "Сейчас в топе у команды" not in resp.text
 
 
-async def test_index_page_shows_daily_top3(db_session):
+async def test_daily_digest_page_shows_latest_picks(db_session):
     from db.models import Collection
 
     link = await _make_link(db_session, url="https://top3.com", title="В топ-3", priority_score=9.0)
     collection = Collection(
-        title="Топ-3 новых материала",
+        title="Top 3 new picks",
         theme="daily-top3",
-        summary_md="Автоматический отбор.",
+        summary_md="Automatic pick by demand.",
         link_ids=[link.id],
     )
     db_session.add(collection)
     await db_session.commit()
 
     with TestClient(app) as client:
-        resp = client.get("/")
+        resp = client.get("/daily-digest")
     assert resp.status_code == 200
-    assert "Топ-3 новых материала" in resp.text
     assert "В топ-3" in resp.text
 
 
@@ -263,50 +262,7 @@ async def test_popular_badge_shown_after_enough_clicks(db_session):
         for _ in range(3):
             client.get(f"/links/{link.id}/visit")
         resp = client.get("/")
-    assert "Популярно" in resp.text
-
-
-async def test_similar_links_endpoint_excludes_self(db_session):
-    import hashlib
-
-    from db.models import Link, LinkStatus
-
-    vec_a = [0.0] * 1536
-    vec_a[0] = 1.0
-    link_a = Link(
-        url="https://a.com",
-        normalized_url="a.com",
-        url_hash=hashlib.sha256(b"a").hexdigest(),
-        title="A",
-        status=LinkStatus.done,
-        embedding=vec_a,
-    )
-    link_b = Link(
-        url="https://b.com",
-        normalized_url="b.com",
-        url_hash=hashlib.sha256(b"b").hexdigest(),
-        title="Похожая B",
-        status=LinkStatus.done,
-        embedding=vec_a,
-    )
-    db_session.add_all([link_a, link_b])
-    await db_session.commit()
-    await db_session.refresh(link_a)
-
-    with TestClient(app) as client:
-        resp = client.get(f"/links/{link_a.id}/similar", headers={"HX-Request": "true"})
-    assert resp.status_code == 200
-    assert "Похожая B" in resp.text
-    assert ">A<" not in resp.text
-
-
-async def test_similar_links_empty_without_embedding(db_session):
-    link = await _make_link(db_session, url="https://a.com", title="A")
-
-    with TestClient(app) as client:
-        resp = client.get(f"/links/{link.id}/similar", headers={"HX-Request": "true"})
-    assert resp.status_code == 200
-    assert "не нашлось" in resp.text
+    assert "Popular" in resp.text
 
 
 async def test_edit_form_and_save_flow(db_session):
@@ -324,7 +280,7 @@ async def test_edit_form_and_save_flow(db_session):
         )
     assert saved.status_code == 200
     assert "Новый заголовок" in saved.text
-    assert "Редактировать" in saved.text  # вернулись в режим просмотра (карточка)
+    assert "Edit" in saved.text  # вернулись в режим просмотра (карточка)
 
 
 async def test_detail_edit_form_uses_detail_view_on_save(db_session):
