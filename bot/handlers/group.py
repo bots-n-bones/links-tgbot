@@ -40,11 +40,20 @@ async def handle_group_message(message: Message, bot_username: str = "") -> None
             enqueue_processing(raw_message.id)
         return
 
-    # Обращение к боту через @username в группе — просто ответ на реплику, без
-    # поиска по базе и без "подборки" (как и в личке — см. bot/handlers/private.py).
+    # Обращение к боту в группе — через @username или ответом (reply) на
+    # сообщение бота, чтобы продолжать диалог без повторного упоминания.
+    # Просто ответ на реплику, без поиска по базе и без "подборки" (как и в
+    # личке — см. bot/handlers/private.py).
     text = message.text or message.caption
-    if text and bot_username and f"@{bot_username.lower()}" in text.lower():
-        question = _strip_mention(text, bot_username) or text
+    mentioned = bool(text and bot_username and f"@{bot_username.lower()}" in text.lower())
+    replied_to_bot = bool(
+        bot_username
+        and message.reply_to_message
+        and message.reply_to_message.from_user
+        and (message.reply_to_message.from_user.username or "").lower() == bot_username.lower()
+    )
+    if text and (mentioned or replied_to_bot):
+        question = _strip_mention(text, bot_username) if mentioned else text
         answer = await answer_casually(question)
         await message.reply(answer)
         return

@@ -14,6 +14,7 @@ from tests.bot.conftest import WHITELISTED_USER_ID
 @dataclass
 class FakeUser:
     id: int
+    username: str | None = None
 
 
 @dataclass
@@ -31,6 +32,7 @@ class FakeMessage:
     caption: str | None = None
     entities: list | None = field(default_factory=list)
     caption_entities: list | None = field(default_factory=list)
+    reply_to_message: "FakeMessage | None" = None
     sent: list[str] = field(default_factory=list)
 
     async def answer(self, text: str, **kwargs) -> None:
@@ -40,12 +42,18 @@ class FakeMessage:
         self.sent.append(text)
 
 
-def make_group_message(message_id: int, text: str, sender_id: int = 1) -> FakeMessage:
+def make_group_message(
+    message_id: int,
+    text: str,
+    sender_id: int = 1,
+    reply_to_message: FakeMessage | None = None,
+) -> FakeMessage:
     return FakeMessage(
         chat=FakeChat(id=-100123, type="group"),
         from_user=FakeUser(id=sender_id),
         message_id=message_id,
         text=text,
+        reply_to_message=reply_to_message,
     )
 
 
@@ -148,6 +156,26 @@ async def test_group_handler_mention_is_case_insensitive_and_stripped(db_session
     msg = make_group_message(8, "@TestBot есть что про RAG?")
     await group_module.handle_group_message(msg, bot_username="testbot")
     assert len(msg.sent) == 1
+
+
+async def test_group_handler_replies_to_bot_message_continues_dialog(db_session):
+    # Ответ (reply) на предыдущее сообщение бота — продолжение диалога без
+    # повторного @упоминания.
+    bots_message = make_group_message(9, "Имя просто такое", sender_id=0)
+    bots_message.from_user = FakeUser(id=0, username="testbot")
+
+    msg = make_group_message(10, "А мне кажется нет", reply_to_message=bots_message)
+    await group_module.handle_group_message(msg, bot_username="testbot")
+
+    assert len(msg.sent) == 1
+    assert "Фейковый ответ LLM." in msg.sent[0]
+
+
+async def test_group_handler_ignores_reply_to_other_user(db_session):
+    someone_elses_message = make_group_message(11, "привет всем", sender_id=5)
+    msg = make_group_message(12, "ты о чём?", reply_to_message=someone_elses_message)
+    await group_module.handle_group_message(msg, bot_username="testbot")
+    assert msg.sent == []
 
 
 # --- private handler: whitelist ---
