@@ -31,15 +31,10 @@ def _render_answer_html(answer: str) -> str:
 
 
 def format_qa_reply_html(result: QAResult) -> str:
-    """Для /ask — явного запроса к базе: ответ + список источников кликабельными
-    заголовками вместо 'title (url)'."""
-    lines = [_render_answer_html(result.answer)]
-    if result.matched_links:
-        lines.append("")
-        lines.append("Источники:")
-        for m in result.matched_links:
-            lines.append(f"- {_link_html(m.url, m.title)} — добавляли {m.source_count} раз")
-    return "\n".join(lines)
+    """Для /ask — явного запроса к базе: сам ответ уже содержит кликабельные
+    ссылки (см. _render_answer_html), отдельный список источников под ним
+    был бы дублированием."""
+    return _render_answer_html(result.answer)
 
 
 def format_link_list_html(links: list[Link]) -> str:

@@ -7,10 +7,10 @@ def _link(url: str, title: str | None) -> Link:
     return Link(url=url, normalized_url=url, url_hash=url, title=title, status=LinkStatus.done)
 
 
-def test_format_qa_reply_html_wraps_title_as_link():
+def test_format_qa_reply_html_wraps_markdown_title_as_link():
     result = QAResult(
         question="q",
-        answer="Ответ",
+        answer="Вот: [Статья про RAG](https://a.com)",
         matched_links=[
             MatchedLink(
                 id=1,
@@ -24,48 +24,36 @@ def test_format_qa_reply_html_wraps_title_as_link():
     )
     text = format_qa_reply_html(result)
     assert '<a href="https://a.com">Статья про RAG</a>' in text
-    assert "https://a.com)" not in text  # старый формат "title (url)" не используется
 
 
-def test_format_qa_reply_html_escapes_title_and_answer():
+def test_format_qa_reply_html_no_longer_appends_source_list():
+    # Список "Источники:" под ответом убрали — дублировал ссылки, уже
+    # встроенные в текст ответа.
     result = QAResult(
         question="q",
-        answer="<script>alert(1)</script>",
+        answer="Ответ без ссылок в тексте",
         matched_links=[
             MatchedLink(
                 id=1,
                 url="https://a.com",
-                title="<b>жирный</b> заголовок",
+                title="Статья про RAG",
                 description=None,
-                source_count=1,
-                unique_senders=1,
+                source_count=3,
+                unique_senders=2,
             )
         ],
     )
+    text = format_qa_reply_html(result)
+    assert text == "Ответ без ссылок в тексте"
+    assert "Источники" not in text
+    assert "https://a.com" not in text
+
+
+def test_format_qa_reply_html_escapes_answer():
+    result = QAResult(question="q", answer="<script>alert(1)</script>", matched_links=[])
     text = format_qa_reply_html(result)
     assert "<script>" not in text
     assert "&lt;script&gt;" in text
-    assert "<b>жирный</b>" not in text
-    assert "&lt;b&gt;жирный&lt;/b&gt;" in text
-
-
-def test_format_qa_reply_html_falls_back_to_url_without_title():
-    result = QAResult(
-        question="q",
-        answer="Ответ",
-        matched_links=[
-            MatchedLink(
-                id=1,
-                url="https://a.com",
-                title=None,
-                description=None,
-                source_count=1,
-                unique_senders=1,
-            )
-        ],
-    )
-    text = format_qa_reply_html(result)
-    assert '<a href="https://a.com">https://a.com</a>' in text
 
 
 def test_format_qa_reply_html_converts_markdown_links_in_answer_text():
