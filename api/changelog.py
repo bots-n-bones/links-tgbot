@@ -10,9 +10,26 @@ class ChangelogEntry:
     summary: list[str]
 
 
-CURRENT_VERSION = "1.3.0"
+CURRENT_VERSION = "1.4.0"
 
 CHANGELOG: list[ChangelogEntry] = [
+    ChangelogEntry(
+        version="1.4.0",
+        date="2026-07-13",
+        summary=[
+            "Fixed inline bot buttons never firing — the webhook was only "
+            "subscribed to message updates, so Telegram silently dropped "
+            "every button press (callback_query)",
+            "Links now have an Area (ai / design / coding / tech / business / "
+            "other), classified by GPT alongside tags; filterable on the index",
+            "Links index rebuilt as a real table: Title / Description / Tags / "
+            "Area columns instead of a card feed",
+            "Added manual link entry from the dashboard (+ Add link)",
+            "New Posts tab: every group chat message is captured, with or "
+            "without links — GPT summary, area, and tags; forwarded posts from "
+            "public channels link to the original post so Telegram can preview it",
+        ],
+    ),
     ChangelogEntry(
         version="1.3.0",
         date="2026-07-12",

@@ -233,6 +233,40 @@
     .row-desc { font-size: 13px; color: var(--text-muted); margin: 8px 0 0; }
     .row-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex-shrink: 0; }
 
+    /* --- Data table (Links index) --- */
+    .table-scroll { overflow-x: auto; }
+    .data-table { width: 100%; border-collapse: collapse; }
+    .data-table th {
+      text-align: left;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-faint);
+      font-weight: 500;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    .data-table td { padding: 14px 16px; border-bottom: 1px solid var(--border); vertical-align: top; font-size: 13px; }
+    .data-table tr:last-child td { border-bottom: none; }
+    .data-table tr:hover td { background: var(--ghost); }
+    .data-table .col-title { min-width: 220px; }
+    .data-table .col-title a {
+      font-family: var(--font-display);
+      font-weight: 500;
+      font-size: 15px;
+      text-decoration: underline;
+      text-decoration-color: var(--border-strong);
+      text-underline-offset: 3px;
+    }
+    .data-table .col-title a:hover { color: var(--accent); text-decoration-color: var(--accent); }
+    .data-table .col-desc { color: var(--text-muted); max-width: 340px; }
+    .data-table .col-tags, .data-table .col-area { white-space: nowrap; }
+    .data-table .col-actions { white-space: nowrap; text-align: right; }
+    .data-table .tags { margin: 0; }
+    .post-thumb { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; margin-bottom: 8px; display: block; }
+
     .badge {
       display: inline-block;
       background: transparent;
@@ -261,7 +295,7 @@
 
     .edit-form { display: flex; flex-direction: column; gap: 8px; padding: 16px 20px; }
     .edit-form label { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-faint); }
-    .edit-form input, .edit-form textarea {
+    .edit-form input, .edit-form textarea, .edit-form select {
       background: transparent;
       border: 1px solid var(--border);
       color: var(--text);
@@ -272,7 +306,7 @@
       width: 100%;
       resize: vertical;
     }
-    .edit-form input:focus, .edit-form textarea:focus { outline: none; border-color: var(--border-strong); }
+    .edit-form input:focus, .edit-form textarea:focus, .edit-form select:focus { outline: none; border-color: var(--border-strong); }
     .edit-form-actions { display: flex; gap: 8px; margin-top: 4px; }
 
     .pagination { display: flex; gap: 4px; justify-content: center; margin-top: 16px; }
@@ -316,6 +350,7 @@
     </a>
     <nav class="site-nav">
       <a href="/">Links</a>
+      <a href="/posts">Posts</a>
       <a href="/daily-digest">Daily digest</a>
       <a href="/weekly-digest">Weekly digest</a>
     </nav>

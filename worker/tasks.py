@@ -31,7 +31,7 @@ from shared.url_normalizer import normalize_url, url_hash
 from worker.collections import format_digest_text, generate_daily_digest, generate_weekly_digest
 from worker.embeddings import get_embedding_client
 from worker.fetcher import FetchError, fetch_metadata
-from worker.llm import get_llm_client
+from worker.llm import get_llm_client, normalize_area
 from worker.priority import compute_priority_score
 from worker.search import get_search_client
 
@@ -232,6 +232,7 @@ async def _process_one_url(
         sender=None,
     )
     link.description = llm_result.description
+    link.area = normalize_area(llm_result.area)
     normalized_tags = normalize_tags(llm_result.tags, synonyms)
     for tag_name in normalized_tags:
         tag = await _get_or_create_tag(session, tag_name)
@@ -591,3 +592,10 @@ def generate_weekly_digest_task() -> None:
 @app.task(name="worker.tasks.generate_daily_digest_task")
 def generate_daily_digest_task() -> None:
     run_task(generate_daily_digest())
+
+
+@app.task(name="worker.tasks.process_post")
+def process_post_task(payload: dict) -> int | None:
+    from worker.posts import process_post
+
+    return run_task(process_post(payload))

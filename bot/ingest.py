@@ -66,3 +66,13 @@ def enqueue_processing(raw_message_id: int) -> None:
     from worker.tasks import process_raw_message
 
     process_raw_message.delay(raw_message_id)
+
+
+def enqueue_post_processing(payload: dict, *, countdown: int = 20) -> None:
+    """countdown: посты со ссылками enqueue'ятся с задержкой, чтобы к моменту
+    классификации поста связанная ссылка уже успела обработаться и попасть в
+    Post.link_ids (см. worker/posts.py) — не строгая гарантия, лучшее из
+    простого."""
+    from worker.tasks import process_post_task
+
+    process_post_task.apply_async(args=[payload], countdown=countdown)

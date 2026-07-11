@@ -1,4 +1,4 @@
-from api.templates_env import _TAG_COLOR_VARS, clicks_label, tag_color
+from api.templates_env import _TAG_COLOR_VARS, area_color, clicks_label, tag_color
 
 
 def test_tag_color_is_deterministic():
@@ -23,3 +23,13 @@ def test_clicks_label_plural():
     assert clicks_label(2) == "clicks"
     assert clicks_label(11) == "clicks"
     assert clicks_label(111) == "clicks"
+
+
+def test_area_color_is_fixed_per_area():
+    assert area_color("ai") == "--cyan"
+    assert area_color("design") == "--lilac"
+
+
+def test_area_color_falls_back_for_unknown_or_missing():
+    assert area_color(None) == "--text-faint"
+    assert area_color("nonsense") == "--text-faint"

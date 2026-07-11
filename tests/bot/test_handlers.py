@@ -24,12 +24,14 @@ def make_state(sender_id: int) -> FSMContext:
 class FakeUser:
     id: int
     username: str | None = None
+    full_name: str | None = None
 
 
 @dataclass
 class FakeChat:
     id: int
     type: str
+    title: str | None = None
 
 
 @dataclass
@@ -42,6 +44,8 @@ class FakeMessage:
     entities: list | None = field(default_factory=list)
     caption_entities: list | None = field(default_factory=list)
     reply_to_message: "FakeMessage | None" = None
+    photo: list | None = None
+    forward_origin: object | None = None
     sent: list[str] = field(default_factory=list)
 
     async def answer(self, text: str, **kwargs) -> None:
@@ -125,6 +129,80 @@ async def test_group_handler_keeps_non_telegram_link_alongside_telegram_one(
     rows = (await db_session.execute(select(RawMessage))).scalars().all()
     assert len(rows) == 1  # raw_message сохраняется целиком, фильтруется только список URL
     assert len(enqueued) == 1
+
+
+# --- Posts capture (F: вкладка Posts, сохраняем каждое сообщение) ---
+
+
+async def test_group_handler_enqueues_post_with_link_and_delay(db_session, monkeypatch):
+    calls: list[tuple[dict, int]] = []
+    monkeypatch.setattr(
+        group_module,
+        "enqueue_post_processing",
+        lambda payload, countdown=0: calls.append((payload, countdown)),
+    )
+    monkeypatch.setattr(group_module, "enqueue_processing", lambda rid: None)
+
+    msg = make_group_message(60, "check https://example.com/a")
+    await group_module.handle_group_message(msg)
+
+    assert len(calls) == 1
+    payload, countdown = calls[0]
+    assert payload["urls"] == ["https://example.com/a"]
+    assert countdown == 20  # с задержкой, чтобы ссылка успела обработаться
+
+
+async def test_group_handler_enqueues_post_without_link_immediately(db_session, monkeypatch):
+    calls: list[tuple[dict, int]] = []
+    monkeypatch.setattr(
+        group_module,
+        "enqueue_post_processing",
+        lambda payload, countdown=0: calls.append((payload, countdown)),
+    )
+
+    msg = make_group_message(61, "просто болтовня без ссылок")
+    await group_module.handle_group_message(msg)
+
+    assert len(calls) == 1
+    payload, countdown = calls[0]
+    assert payload["urls"] == []
+    assert countdown == 0
+
+
+async def test_group_handler_skips_post_enqueue_for_empty_message(db_session, monkeypatch):
+    calls: list[dict] = []
+    monkeypatch.setattr(
+        group_module, "enqueue_post_processing", lambda payload, **kw: calls.append(payload)
+    )
+
+    msg = make_group_message(62, None)
+    await group_module.handle_group_message(msg)
+
+    assert calls == []
+
+
+def test_resolve_post_url_uses_original_channel_post_for_public_forwards():
+    from datetime import UTC, datetime
+
+    from aiogram.types import Chat, MessageOriginChannel
+
+    origin = MessageOriginChannel(
+        type="channel",
+        date=datetime.now(UTC),
+        chat=Chat(id=-1001111111111, type="channel", username="somechannel"),
+        message_id=777,
+    )
+    msg = make_group_message(63, "forwarded post")
+    msg.forward_origin = origin
+
+    assert group_module._resolve_post_url(msg) == "https://t.me/somechannel/777"
+
+
+def test_resolve_post_url_falls_back_to_internal_deep_link_without_forward():
+    msg = make_group_message(64, "own message")
+    msg.chat = FakeChat(id=-100123456789, type="group")
+
+    assert group_module._resolve_post_url(msg) == "https://t.me/c/123456789/64"
 
 
 async def test_group_handler_no_url_ignored_silently(db_session, monkeypatch):

@@ -56,6 +56,7 @@ async def test_new_link_creates_rows_with_normalized_tags(db_session, monkeypatc
     link = links[0]
     assert link.status.value == "done"
     assert link.description == "Фейковое описание для https://example.com/a"
+    assert link.area == "tech"
     assert link.embedding is not None
 
     sources = (
@@ -100,6 +101,28 @@ async def test_duplicate_does_not_call_llm_again(db_session, monkeypatch):
     assert link.source_count == 2
     assert link.unique_senders == 2
     assert len(llm.describe_calls) == 1  # LLM вызван только один раз
+
+
+async def test_invalid_area_from_llm_falls_back_to_other(db_session, monkeypatch):
+    class WeirdAreaLLMClient:
+        def __init__(self) -> None:
+            self.describe_calls: list[dict] = []
+
+        async def describe_link(self, **kwargs):
+            self.describe_calls.append(kwargs)
+            return TagDescriptionResult(description="d", tags=[], area="crypto", confidence=0.5)
+
+        async def complete(self, **kwargs):
+            return ""
+
+    _patch_clients(monkeypatch, llm=WeirdAreaLLMClient())
+    monkeypatch.setattr(tasks_module, "fetch_metadata", _fake_fetch_ok)
+
+    rm = await _add_raw_message(db_session, chat_id=1, message_id=99, text="https://example.com/x")
+    await tasks_module._process_raw_message_async(rm.id)
+
+    link = (await db_session.execute(select(Link))).scalars().one()
+    assert link.area == "other"
 
 
 async def test_fetch_failure_falls_back_to_message_context(db_session, monkeypatch):

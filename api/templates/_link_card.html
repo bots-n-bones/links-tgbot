@@ -1,21 +1,24 @@
-<div class="row-item" id="link-{{ link.id }}">
-  <div class="row-main">
-    <div class="row-title">
-      <a href="/links/{{ link.id }}/visit" target="_blank" rel="noopener">{{ link.title or link.url }}</a>
-      {% if link.click_count >= 3 %}<span class="badge">Popular</span>{% endif %}
-    </div>
+<tr id="link-{{ link.id }}">
+  <td class="col-title">
+    <a href="/links/{{ link.id }}/visit" target="_blank" rel="noopener">{{ link.title or link.url }}</a>
+    {% if link.click_count >= 3 %}<span class="badge">Popular</span>{% endif %}
     <div class="row-meta">
       {{ link.domain or '' }} · {{ link.created_at.strftime('%b %d, %Y') }}
       {% if link.click_count > 0 %}· <span class="click-count">{{ link.click_count }} {{ clicks_label(link.click_count) }}</span>{% endif %}
     </div>
-    {% if link.description %}<p class="row-desc">{{ link.description }}</p>{% endif %}
+  </td>
+  <td class="col-desc">{{ link.description or '' }}</td>
+  <td class="col-tags">
     <div class="tags">
       {% for t in link.tags %}<span class="tag" style="--tag-color: var({{ tag_color(t.name) }});">{{ t.name }}</span>{% endfor %}
     </div>
-  </div>
-  <div class="row-actions">
+  </td>
+  <td class="col-area">
+    {% if link.area %}<span class="tag" style="--tag-color: var({{ area_color(link.area) }});">{{ link.area }}</span>{% endif %}
+  </td>
+  <td class="col-actions">
     <a class="btn" href="/links/{{ link.id }}">View</a>
     <button class="btn" hx-get="/links/{{ link.id }}/edit-form" hx-target="#link-{{ link.id }}" hx-swap="outerHTML">Edit</button>
     <button class="btn" hx-patch="/api/links/{{ link.id }}/hide?hidden=true" hx-target="#link-{{ link.id }}" hx-swap="outerHTML">Hide</button>
-  </div>
-</div>
+  </td>
+</tr>

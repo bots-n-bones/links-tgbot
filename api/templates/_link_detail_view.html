@@ -3,6 +3,7 @@
   <p><a href="/links/{{ link.id }}/visit" target="_blank" rel="noopener" class="source-url">{{ link.url }}</a></p>
   {% if link.description %}<p>{{ link.description }}</p>{% endif %}
   <div class="tags">
+    {% if link.area %}<span class="tag" style="--tag-color: var({{ area_color(link.area) }});">{{ link.area }}</span>{% endif %}
     {% for t in link.tags %}<span class="tag" style="--tag-color: var({{ tag_color(t.name) }});">{{ t.name }}</span>{% endfor %}
   </div>
   <p class="card-meta">

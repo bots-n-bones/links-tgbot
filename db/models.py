@@ -35,6 +35,7 @@ class LinkStatus(str, enum.Enum):
 class SourceType(str, enum.Enum):
     group = "group"
     direct = "direct"
+    manual = "manual"  # добавлено вручную через дашборд, не через бота
 
 
 class Link(Base):
@@ -46,6 +47,9 @@ class Link(Base):
     url_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     title: Mapped[str | None] = mapped_column(Text)
     description: Mapped[str | None] = mapped_column(Text)
+    area: Mapped[str | None] = mapped_column(
+        String(50)
+    )  # coarse category, see worker/llm.AREA_CHOICES
     domain: Mapped[str | None] = mapped_column(String(255))
     favicon_url: Mapped[str | None] = mapped_column(Text)
     status: Mapped[LinkStatus] = mapped_column(
@@ -115,12 +119,47 @@ class Tag(Base):
     slug: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
 
     links: Mapped[list["Link"]] = relationship(secondary="link_tags", back_populates="tags")
+    posts: Mapped[list["Post"]] = relationship(secondary="post_tags", back_populates="tags")
 
 
 class LinkTag(Base):
     __tablename__ = "link_tags"
 
     link_id: Mapped[int] = mapped_column(ForeignKey("links.id"), primary_key=True)
+    tag_id: Mapped[int] = mapped_column(ForeignKey("tags.id"), primary_key=True)
+
+
+class Post(Base):
+    """Каждое сообщение из отслеживаемых групп (F: вкладка Posts) — со
+    ссылками или без. Если в посте были ссылки, они всё равно уходят по
+    обычному пайплайну в links; тут хранится сам пост как отдельная единица."""
+
+    __tablename__ = "posts"
+    __table_args__ = (UniqueConstraint("chat_id", "message_id", name="uq_posts_chat_message"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    message_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    chat_title: Mapped[str | None] = mapped_column(Text)
+    sender_id: Mapped[int | None] = mapped_column(BigInteger)
+    sender_name: Mapped[str | None] = mapped_column(Text)
+    text: Mapped[str | None] = mapped_column(Text)
+    # Публичная ссылка на оригинальный пост в канале (если это форвард из
+    # публичного канала) — иначе внутренний deep-link t.me/c/... для участников.
+    post_url: Mapped[str | None] = mapped_column(Text)
+    summary: Mapped[str | None] = mapped_column(Text)
+    area: Mapped[str | None] = mapped_column(String(50))
+    photo_url: Mapped[str | None] = mapped_column(Text)
+    link_ids: Mapped[list | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    tags: Mapped[list["Tag"]] = relationship(secondary="post_tags", back_populates="posts")
+
+
+class PostTag(Base):
+    __tablename__ = "post_tags"
+
+    post_id: Mapped[int] = mapped_column(ForeignKey("posts.id"), primary_key=True)
     tag_id: Mapped[int] = mapped_column(ForeignKey("tags.id"), primary_key=True)
 
 

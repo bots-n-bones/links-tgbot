@@ -11,6 +11,13 @@
     <label for="edit-tags-{{ link.id }}">Tags (comma-separated)</label>
     <input type="text" id="edit-tags-{{ link.id }}" name="tags" value="{{ link.tags|map(attribute='name')|join(', ') }}">
 
+    <label for="edit-area-{{ link.id }}">Area</label>
+    <select id="edit-area-{{ link.id }}" name="area">
+      {% for choice in area_choices %}
+        <option value="{{ choice }}" {% if link.area == choice %}selected{% endif %}>{{ choice }}</option>
+      {% endfor %}
+    </select>
+
     <div class="edit-form-actions">
       <button type="submit" class="btn btn-primary">Save</button>
       <button type="button" class="btn" hx-get="/links/{{ link.id }}/detail-view" hx-target="#link-{{ link.id }}" hx-swap="outerHTML">Cancel</button>

@@ -17,6 +17,7 @@ from api.templates_env import templates
 from db.models import Collection, Link, LinkSource, LinkTag, Tag
 from db.session import get_sessionmaker
 from shared.tag_normalizer import normalize_tags
+from worker.llm import normalize_area
 
 router = APIRouter(prefix="/api/links", tags=["links"])
 
@@ -49,6 +50,7 @@ async def query_links(
     session: AsyncSession,
     *,
     tag: str | None = None,
+    area: str | None = None,
     chat: str | None = None,
     q: str | None = None,
     source_type: str | None = None,
@@ -64,6 +66,8 @@ async def query_links(
                 select(LinkTag.link_id).join(Tag, Tag.id == LinkTag.tag_id).where(Tag.name == tag)
             )
         )
+    if area:
+        conditions.append(Link.area == area)
     if chat:
         conditions.append(
             Link.id.in_(select(LinkSource.link_id).where(LinkSource.chat_title == chat))
@@ -143,6 +147,7 @@ class LinkOut(BaseModel):
     url: str
     title: str | None
     description: str | None
+    area: str | None
     domain: str | None
     favicon_url: str | None
     status: str
@@ -161,6 +166,7 @@ class LinkOut(BaseModel):
             url=link.url,
             title=link.title,
             description=link.description,
+            area=link.area,
             domain=link.domain,
             favicon_url=link.favicon_url,
             status=link.status.value,
@@ -220,9 +226,10 @@ async def update_link(
     title: str = Form(""),
     description: str = Form(""),
     tags: str = Form(""),
+    area: str = Form(""),
     view: str = Form("card"),
 ):
-    """Общая функция редактирования записи: заголовок, описание, теги —
+    """Общая функция редактирования записи: заголовок, описание, теги, area —
     заменяет старый узкоспециализированный PATCH .../tags. view=card|detail
     определяет, какой HTML-фрагмент вернуть (карточка в списке или блок на
     странице ссылки) — сам PATCH и модель данных при этом общие."""
@@ -234,6 +241,8 @@ async def update_link(
 
         link.title = title.strip() or None
         link.description = description.strip() or None
+        if area:
+            link.area = normalize_area(area)
 
         parsed = [t.strip() for t in tags.split(",") if t.strip()]
         normalized = normalize_tags(parsed)

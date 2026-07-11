@@ -1,3 +1,5 @@
+import html
+import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -9,14 +11,18 @@ from sqlalchemy import select, text
 from api.changelog import CHANGELOG, CURRENT_VERSION
 from api.routes import ask, collections, links, research
 from api.routes.links import get_link_detail, list_all_tags, list_digest_history, query_links
+from api.routes.posts import list_all_post_tags, query_posts
 from api.templates_env import templates
 from bot.formatting import format_qa_reply_html, render_markdown_links_html
-from db.models import Collection, Link, ResearchReport
+from bot.ingest import enqueue_processing, ingest_message
+from db.models import Collection, Link, ResearchReport, SourceType
 from db.session import get_sessionmaker
 from shared.config import get_settings
 from worker.collections import DAILY_DIGEST_THEME, WEEKLY_DIGEST_THEME
 from worker.rag import answer_question
 from worker.tasks import add_research_links, generate_research_report
+
+MANUAL_ADD_CHAT_ID = 0  # синтетический chat_id для ссылок, добавленных вручную с дашборда
 
 app = FastAPI(title="Nova-260")
 app.mount("/static", StaticFiles(directory="api/static"), name="static")
@@ -39,12 +45,13 @@ async def health() -> dict:
 async def index(
     request: Request,
     tag: str | None = None,
+    area: str | None = None,
     sort: str = "priority",
     page: int = 1,
 ):
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
-        result = await query_links(session, tag=tag, sort=sort, page=page)
+        result = await query_links(session, tag=tag, area=area, sort=sort, page=page)
         all_tags = await list_all_tags(session)
 
     return templates.TemplateResponse(
@@ -56,6 +63,7 @@ async def index(
             "page": result.page,
             "page_size": result.page_size,
             "tag": tag,
+            "area": area,
             "sort": sort,
             "all_tags": all_tags,
         },
@@ -66,12 +74,13 @@ async def index(
 async def partial_links(
     request: Request,
     tag: str | None = None,
+    area: str | None = None,
     sort: str = "priority",
     page: int = 1,
 ):
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
-        result = await query_links(session, tag=tag, sort=sort, page=page)
+        result = await query_links(session, tag=tag, area=area, sort=sort, page=page)
 
     return templates.TemplateResponse(
         request,
@@ -82,9 +91,60 @@ async def partial_links(
             "page": result.page,
             "page_size": result.page_size,
             "tag": tag,
+            "area": area,
             "sort": sort,
         },
     )
+
+
+@app.post("/links/add", response_class=HTMLResponse)
+async def add_link_manual(request: Request, url: str = Form(...)):
+    """Ручное добавление ссылки с дашборда — идёт через тот же dedup/LLM
+    пайплайн, что и ссылки из бота (bot/ingest.py), просто с синтетическим
+    источником вместо реального Telegram-сообщения."""
+    url = url.strip()
+    if not url:
+        status_text = "Enter a URL."
+    else:
+        sessionmaker = get_sessionmaker()
+        async with sessionmaker() as session:
+            raw_message, is_new = await ingest_message(
+                session,
+                chat_id=MANUAL_ADD_CHAT_ID,
+                message_id=int(time.time() * 1000),
+                sender_id=None,
+                text=url,
+                entities_json=None,
+                source_type=SourceType.manual,
+            )
+        if is_new:
+            enqueue_processing(raw_message.id)
+            status_text = "Added — will appear in the table once processed (a few seconds)."
+        else:
+            status_text = "Already queued."
+
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        result = await query_links(session, sort="priority", page=1)
+
+    list_response = templates.TemplateResponse(
+        request,
+        "_links_list.html",
+        {
+            "links": result.items,
+            "total": result.total,
+            "page": result.page,
+            "page_size": result.page_size,
+            "tag": None,
+            "area": None,
+            "sort": "priority",
+        },
+    )
+    status_html = (
+        f'<p id="add-link-status" hx-swap-oob="true" class="card-meta">'
+        f"{html.escape(status_text)}</p>"
+    )
+    return HTMLResponse(list_response.body.decode() + status_html)
 
 
 @app.post("/ask", response_class=HTMLResponse)
@@ -309,4 +369,25 @@ async def weekly_digest_detail_page(request: Request, digest_id: int):
 async def changelog_page(request: Request):
     return templates.TemplateResponse(
         request, "changelog.html", {"changelog": CHANGELOG, "current_version": CURRENT_VERSION}
+    )
+
+
+@app.get("/posts", response_class=HTMLResponse)
+async def posts_page(request: Request, area: str | None = None, page: int = 1):
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        result = await query_posts(session, area=area, page=page)
+        all_tags = await list_all_post_tags(session)
+
+    return templates.TemplateResponse(
+        request,
+        "posts.html",
+        {
+            "posts": result.items,
+            "total": result.total,
+            "page": result.page,
+            "page_size": result.page_size,
+            "area": area,
+            "all_tags": all_tags,
+        },
     )

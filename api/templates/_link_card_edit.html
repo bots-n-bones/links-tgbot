@@ -1,17 +1,26 @@
-<div class="row-item" id="link-{{ link.id }}">
-  <form class="edit-form" style="flex: 1; padding: 0;" hx-patch="/api/links/{{ link.id }}" hx-target="#link-{{ link.id }}" hx-swap="outerHTML">
-    <label for="edit-title-{{ link.id }}">Title</label>
-    <input type="text" id="edit-title-{{ link.id }}" name="title" value="{{ link.title or '' }}">
+<tr id="link-{{ link.id }}">
+  <td colspan="5">
+    <form class="edit-form" style="padding: 12px 4px;" hx-patch="/api/links/{{ link.id }}" hx-target="#link-{{ link.id }}" hx-swap="outerHTML">
+      <label for="edit-title-{{ link.id }}">Title</label>
+      <input type="text" id="edit-title-{{ link.id }}" name="title" value="{{ link.title or '' }}">
 
-    <label for="edit-description-{{ link.id }}">Description</label>
-    <textarea id="edit-description-{{ link.id }}" name="description" rows="3">{{ link.description or '' }}</textarea>
+      <label for="edit-description-{{ link.id }}">Description</label>
+      <textarea id="edit-description-{{ link.id }}" name="description" rows="3">{{ link.description or '' }}</textarea>
 
-    <label for="edit-tags-{{ link.id }}">Tags (comma-separated)</label>
-    <input type="text" id="edit-tags-{{ link.id }}" name="tags" value="{{ link.tags|map(attribute='name')|join(', ') }}">
+      <label for="edit-tags-{{ link.id }}">Tags (comma-separated)</label>
+      <input type="text" id="edit-tags-{{ link.id }}" name="tags" value="{{ link.tags|map(attribute='name')|join(', ') }}">
 
-    <div class="edit-form-actions">
-      <button type="submit" class="btn btn-primary">Save</button>
-      <button type="button" class="btn" hx-get="/links/{{ link.id }}/card" hx-target="#link-{{ link.id }}" hx-swap="outerHTML">Cancel</button>
-    </div>
-  </form>
-</div>
+      <label for="edit-area-{{ link.id }}">Area</label>
+      <select id="edit-area-{{ link.id }}" name="area">
+        {% for choice in area_choices %}
+          <option value="{{ choice }}" {% if link.area == choice %}selected{% endif %}>{{ choice }}</option>
+        {% endfor %}
+      </select>
+
+      <div class="edit-form-actions">
+        <button type="submit" class="btn btn-primary">Save</button>
+        <button type="button" class="btn" hx-get="/links/{{ link.id }}/card" hx-target="#link-{{ link.id }}" hx-swap="outerHTML">Cancel</button>
+      </div>
+    </form>
+  </td>
+</tr>

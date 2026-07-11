@@ -13,31 +13,61 @@
 <div class="panel">
   <div class="panel-header">
     <span class="panel-title">Links</span>
-    <form class="filters" hx-get="/partials/links" hx-target="#links-list" hx-swap="outerHTML" hx-trigger="change">
-      <details class="tag-select">
-        <summary>
-          {% if tag %}<span class="swatch" style="--tag-color: var({{ tag_color(tag) }});"></span>{% endif %}
-          {{ tag or "All tags" }}
-        </summary>
-        <div class="tag-select-menu">
-          <a class="tag-option" href="#"
-             hx-get="/partials/links?tag=&sort={{ sort }}" hx-target="#links-list" hx-swap="outerHTML"
-             onclick="this.closest('details').open=false">All tags</a>
-          {% for name, count in all_tags %}
+    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+      <form class="filters" hx-get="/partials/links" hx-target="#links-list" hx-swap="outerHTML" hx-trigger="change">
+        <details class="tag-select">
+          <summary>
+            {% if tag %}<span class="swatch" style="--tag-color: var({{ tag_color(tag) }});"></span>{% endif %}
+            {{ tag or "All tags" }}
+          </summary>
+          <div class="tag-select-menu">
             <a class="tag-option" href="#"
-               hx-get="/partials/links?tag={{ name }}&sort={{ sort }}" hx-target="#links-list" hx-swap="outerHTML"
-               onclick="this.closest('details').open=false">
-              <span class="swatch" style="--tag-color: var({{ tag_color(name) }});"></span>{{ name }} ({{ count }})
-            </a>
-          {% endfor %}
+               hx-get="/partials/links?tag=&area={{ area or '' }}&sort={{ sort }}" hx-target="#links-list" hx-swap="outerHTML"
+               onclick="this.closest('details').open=false">All tags</a>
+            {% for name, count in all_tags %}
+              <a class="tag-option" href="#"
+                 hx-get="/partials/links?tag={{ name }}&area={{ area or '' }}&sort={{ sort }}" hx-target="#links-list" hx-swap="outerHTML"
+                 onclick="this.closest('details').open=false">
+                <span class="swatch" style="--tag-color: var({{ tag_color(name) }});"></span>{{ name }} ({{ count }})
+              </a>
+            {% endfor %}
+          </div>
+        </details>
+        <details class="tag-select">
+          <summary>
+            {% if area %}<span class="swatch" style="--tag-color: var({{ area_color(area) }});"></span>{% endif %}
+            {{ area or "All areas" }}
+          </summary>
+          <div class="tag-select-menu">
+            <a class="tag-option" href="#"
+               hx-get="/partials/links?tag={{ tag or '' }}&area=&sort={{ sort }}" hx-target="#links-list" hx-swap="outerHTML"
+               onclick="this.closest('details').open=false">All areas</a>
+            {% for choice in area_choices %}
+              <a class="tag-option" href="#"
+                 hx-get="/partials/links?tag={{ tag or '' }}&area={{ choice }}&sort={{ sort }}" hx-target="#links-list" hx-swap="outerHTML"
+                 onclick="this.closest('details').open=false">
+                <span class="swatch" style="--tag-color: var({{ area_color(choice) }});"></span>{{ choice }}
+              </a>
+            {% endfor %}
+          </div>
+        </details>
+        <select name="sort">
+          <option value="priority" {% if sort == "priority" %}selected{% endif %}>By priority</option>
+          <option value="clicks" {% if sort == "clicks" %}selected{% endif %}>By popularity</option>
+          <option value="date" {% if sort == "date" %}selected{% endif %}>By date</option>
+        </select>
+      </form>
+      <details class="tag-select">
+        <summary>+ Add link</summary>
+        <div class="tag-select-menu" style="min-width: 300px; padding: 14px;">
+          <form hx-post="/links/add" hx-target="#links-list" hx-swap="outerHTML" style="display: flex; flex-direction: column; gap: 8px;">
+            <input type="text" name="url" placeholder="https://…" required>
+            <button type="submit" class="btn btn-primary">Add</button>
+          </form>
+          <p id="add-link-status" class="card-meta" style="margin: 8px 0 0;"></p>
         </div>
       </details>
-      <select name="sort">
-        <option value="priority" {% if sort == "priority" %}selected{% endif %}>By priority</option>
-        <option value="clicks" {% if sort == "clicks" %}selected{% endif %}>By popularity</option>
-        <option value="date" {% if sort == "date" %}selected{% endif %}>By date</option>
-      </select>
-    </form>
+    </div>
   </div>
   {% include "_links_list.html" %}
 </div>

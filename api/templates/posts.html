@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Posts — Nova-260{% endblock %}
+{% block content %}
+<div class="eyebrow">Posts</div>
+<h1>Posts</h1>
+<p class="card-meta" style="margin-bottom: 20px;">Every message posted in tracked group chats — with or without links.</p>
+
+<div class="panel">
+  <div class="panel-header">
+    <span class="panel-title">Posts</span>
+    <details class="tag-select">
+      <summary>
+        {% if area %}<span class="swatch" style="--tag-color: var({{ area_color(area) }});"></span>{% endif %}
+        {{ area or "All areas" }}
+      </summary>
+      <div class="tag-select-menu">
+        <a class="tag-option" href="/posts">All areas</a>
+        {% for choice in area_choices %}
+          <a class="tag-option" href="/posts?area={{ choice }}">
+            <span class="swatch" style="--tag-color: var({{ area_color(choice) }});"></span>{{ choice }}
+          </a>
+        {% endfor %}
+      </div>
+    </details>
+  </div>
+
+  {% if posts %}
+  <div class="table-scroll">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Post</th>
+          <th>Summary</th>
+          <th>Tags</th>
+          <th>Area</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for post in posts %}
+        <tr>
+          <td class="col-title">
+            {% if post.photo_url %}<img src="{{ post.photo_url }}" alt="" class="post-thumb">{% endif %}
+            <a href="{{ post.post_url }}" target="_blank" rel="noopener">{{ post.chat_title or "Post" }} — {{ post.created_at.strftime('%b %d, %Y') }}</a>
+            {% if post.link_ids %}<div class="row-meta">{{ post.link_ids|length }} link{{ "s" if post.link_ids|length != 1 else "" }}</div>{% endif %}
+          </td>
+          <td class="col-desc">{{ post.summary or "" }}</td>
+          <td class="col-tags">
+            <div class="tags">
+              {% for t in post.tags %}<span class="tag" style="--tag-color: var({{ tag_color(t.name) }});">{{ t.name }}</span>{% endfor %}
+            </div>
+          </td>
+          <td class="col-area">
+            {% if post.area %}<span class="tag" style="--tag-color: var({{ area_color(post.area) }});">{{ post.area }}</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="panel-empty">No posts yet.</p>
+  {% endif %}
+
+  {% if total > page_size %}
+  {% set total_pages = ((total - 1) // page_size) + 1 %}
+  <div class="pagination">
+    {% for p in range(1, total_pages + 1) %}
+      <a href="/posts?area={{ area or '' }}&page={{ p }}">{{ p }}{% if p == page %} ●{% endif %}</a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
