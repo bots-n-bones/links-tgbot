@@ -361,19 +361,21 @@ async def test_cmd_digest_returns_latest_collection(db_session):
     from datetime import date
 
     collection = Collection(
-        title="Подборка недели",
-        theme="ai",
+        title="Weekly digest — Jul 07, 2026",
+        theme="weekly-digest",
         period_start=date(2026, 7, 1),
         period_end=date(2026, 7, 7),
-        summary_md="Главное за неделю: всё хорошо.",
+        summary_md="",
+        articles=[{"title": "Great find", "url": "https://a.com", "description": "why it matters"}],
     )
     db_session.add(collection)
     await db_session.commit()
 
     msg = make_private_message(29, "/digest", sender_id=WHITELISTED_USER_ID)
     await commands_module.cmd_digest(msg)
-    assert "Подборка недели" in msg.sent[0]
-    assert "Главное за неделю" in msg.sent[0]
+    assert "Weekly digest — Jul 07, 2026" in msg.sent[0]
+    assert "Great find — https://a.com" in msg.sent[0]
+    assert "why it matters" in msg.sent[0]
 
 
 async def test_cmd_stats_reports_counts_and_top_tags(db_session):

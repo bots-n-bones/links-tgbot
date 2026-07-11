@@ -10,6 +10,12 @@ from db.session import get_sessionmaker
 router = APIRouter(prefix="/api/collections", tags=["collections"])
 
 
+class DigestArticleOut(BaseModel):
+    title: str
+    url: str
+    description: str = ""
+
+
 class CollectionOut(BaseModel):
     id: int
     title: str
@@ -18,6 +24,7 @@ class CollectionOut(BaseModel):
     period_end: str | None
     summary_md: str
     link_ids: list[int]
+    articles: list[DigestArticleOut]
 
 
 def _to_out(c: Collection) -> CollectionOut:
@@ -29,6 +36,7 @@ def _to_out(c: Collection) -> CollectionOut:
         period_end=c.period_end.isoformat() if c.period_end else None,
         summary_md=c.summary_md,
         link_ids=c.link_ids or [],
+        articles=c.articles or [],
     )
 
 

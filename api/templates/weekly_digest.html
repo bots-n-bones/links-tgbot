@@ -2,20 +2,27 @@
 {% block title %}Weekly digest — Nova-260{% endblock %}
 {% block content %}
 <div class="eyebrow">Weekly digest</div>
-<h1>Weekly digests</h1>
+<h1>Weekly digest</h1>
+<p class="card-meta" style="margin-bottom: 20px;">Top 10 fresh articles from the web, picked by GPT to match the quality bar of what the team saved over the past week. {{ schedule_note }}</p>
 
 <div class="panel">
-  <div class="panel-note">{{ schedule_note }}</div>
-  {% if collections %}
-    {% for c in collections %}
-      <div class="card" style="margin: 16px 20px;">
-        <div class="card-title">{{ c.title }}</div>
-        <div class="card-meta">
-          Period: {{ c.period_start }} — {{ c.period_end }} · collected {{ c.created_at.strftime('%b %d, %Y at %H:%M') }}
+  {% if history %}
+  <div class="row-list">
+    {% for collection in history %}
+      <div class="row-item">
+        <div class="row-main">
+          <div class="row-title">
+            <a href="/weekly-digest/{{ collection.id }}">{{ collection.period_start.strftime('%b %d') }} – {{ collection.period_end.strftime('%b %d, %Y') }}</a>
+            {% if is_today_msk(collection.created_at) %}<span class="badge">Actual</span>{% endif %}
+          </div>
+          <div class="row-meta">{{ (collection.articles or [])|length }} article{{ 's' if (collection.articles or [])|length != 1 else '' }}</div>
         </div>
-        <div class="markdown-block">{{ c.summary_md }}</div>
+        <div class="row-actions">
+          <a class="btn" href="/weekly-digest/{{ collection.id }}">Open</a>
+        </div>
       </div>
     {% endfor %}
+  </div>
   {% else %}
     <p class="panel-empty">No digests yet — the first one will be collected automatically on schedule.</p>
   {% endif %}

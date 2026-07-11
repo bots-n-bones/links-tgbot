@@ -34,7 +34,7 @@ class OpenAIWebSearchClient:
         response = await self._client.responses.create(
             model=self._model,
             tools=[{"type": "web_search"}],
-            input=f"Найди материалы по теме: {query}",
+            input=f"Find materials on the topic: {query}",
         )
         results: list[SearchResult] = []
         for item in getattr(response, "output", []) or []:

@@ -41,6 +41,16 @@ class TagDescriptionResult(BaseModel):
     confidence: float = 0.0
 
 
+class DigestArticle(BaseModel):
+    title: str = ""
+    url: str = ""
+    description: str = ""
+
+
+class DigestSelection(BaseModel):
+    articles: list[DigestArticle] = Field(default_factory=list)
+
+
 class LLMClient(Protocol):
     async def describe_link(
         self,
@@ -54,6 +64,10 @@ class LLMClient(Protocol):
     ) -> TagDescriptionResult: ...
 
     async def complete(self, *, system_prompt: str, user_prompt: str, model: str) -> str: ...
+
+    async def select_digest_articles(
+        self, *, system_prompt: str, user_prompt: str, model: str
+    ) -> DigestSelection: ...
 
 
 def _build_describe_user_prompt(
@@ -123,6 +137,35 @@ class OpenAILLMClient:
         )
         return response.choices[0].message.content or ""
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=8),
+        retry=retry_if_exception_type(OpenAIError),
+        reraise=True,
+    )
+    async def select_digest_articles(
+        self, *, system_prompt: str, user_prompt: str, model: str
+    ) -> DigestSelection:
+        response = await self._client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            response_format={"type": "json_object"},
+        )
+        raw = response.choices[0].message.content or "{}"
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            logger.warning(
+                "LLM вернул невалидный JSON для digest-подборки, использую пустой список"
+            )
+            data = {}
+        if not isinstance(data, dict):
+            data = {}
+        return DigestSelection.model_validate(data)
+
 
 class FakeLLMClient:
     """Детерминированные ответы — для тестов и разработки без реального ключа."""
@@ -144,6 +187,14 @@ class FakeLLMClient:
             {"system_prompt": system_prompt, "user_prompt": user_prompt, "model": model}
         )
         return "Фейковый ответ LLM."
+
+    async def select_digest_articles(
+        self, *, system_prompt: str, user_prompt: str, model: str
+    ) -> DigestSelection:
+        self.complete_calls.append(
+            {"system_prompt": system_prompt, "user_prompt": user_prompt, "model": model}
+        )
+        return DigestSelection(articles=[])
 
 
 def get_llm_client() -> LLMClient:

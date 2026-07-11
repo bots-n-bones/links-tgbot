@@ -1,17 +1,20 @@
-from fastapi import FastAPI, Form, Request
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+from fastapi import FastAPI, Form, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select, text
 
 from api.changelog import CHANGELOG, CURRENT_VERSION
 from api.routes import ask, collections, links, research
-from api.routes.links import get_latest_daily_top3, get_link_detail, list_all_tags, query_links
+from api.routes.links import get_link_detail, list_all_tags, list_digest_history, query_links
 from api.templates_env import templates
-from bot.formatting import format_qa_reply_html
+from bot.formatting import format_qa_reply_html, render_markdown_links_html
 from db.models import Collection, Link, ResearchReport
 from db.session import get_sessionmaker
 from shared.config import get_settings
-from worker.collections import DAILY_TOP3_THEME
+from worker.collections import DAILY_DIGEST_THEME, WEEKLY_DIGEST_THEME
 from worker.rag import answer_question
 from worker.tasks import add_research_links, generate_research_report
 
@@ -172,6 +175,13 @@ async def _latest_research_report(session, link_id: int) -> ResearchReport | Non
     )
 
 
+def _research_status_context(link_id: int, report: ResearchReport | None) -> dict:
+    context = {"link_id": link_id, "report": report}
+    if report is not None:
+        context["report_html"] = render_markdown_links_html(report.report_md)
+    return context
+
+
 @app.post("/links/{link_id}/research", response_class=HTMLResponse)
 async def start_research(request: Request, link_id: int):
     """F-58/F-60: запуск research-отчёта из дашборда (не автоматически)."""
@@ -184,7 +194,7 @@ async def start_research(request: Request, link_id: int):
     if existing is None:
         generate_research_report.delay(link_id)  # F-62: кэш — не перегенерирует, если уже есть
     return templates.TemplateResponse(
-        request, "_research_status.html", {"link_id": link_id, "report": existing}
+        request, "_research_status.html", _research_status_context(link_id, existing)
     )
 
 
@@ -195,7 +205,21 @@ async def research_status(request: Request, link_id: int):
     async with sessionmaker() as session:
         report = await _latest_research_report(session, link_id)
     return templates.TemplateResponse(
-        request, "_research_status.html", {"link_id": link_id, "report": report}
+        request, "_research_status.html", _research_status_context(link_id, report)
+    )
+
+
+@app.get("/research/{research_id}/download")
+async def download_research_report(research_id: int):
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        report = await session.get(ResearchReport, research_id)
+    if report is None:
+        return HTMLResponse("Report not found", status_code=404)
+    return Response(
+        report.report_md,
+        media_type="text/markdown",
+        headers={"Content-Disposition": f'attachment; filename="research-{research_id}.md"'},
     )
 
 
@@ -206,41 +230,11 @@ async def add_links_from_research_dashboard(research_id: int):
     return HTMLResponse("<p>Adding links to the database…</p>")
 
 
-@app.get("/daily-digest", response_class=HTMLResponse)
-async def daily_digest_page(request: Request):
-    """Автоматический ежедневный топ-3 (Celery Beat, 12:00 МСК) — история подборок."""
-    sessionmaker = get_sessionmaker()
-    async with sessionmaker() as session:
-        latest_collection, latest_links = await get_latest_daily_top3(session)
-        history_rows = (
-            (
-                await session.execute(
-                    select(Collection)
-                    .where(Collection.theme == DAILY_TOP3_THEME)
-                    .order_by(Collection.created_at.desc())
-                    .offset(1)
-                    .limit(10)
-                )
-            )
-            .scalars()
-            .all()
-        )
-        history = []
-        for collection in history_rows:
-            links_for_collection = list(
-                (await session.execute(select(Link).where(Link.id.in_(collection.link_ids or []))))
-                .scalars()
-                .all()
-            )
-            order = {link_id: i for i, link_id in enumerate(collection.link_ids or [])}
-            links_for_collection.sort(key=lambda link: order.get(link.id, len(order)))
-            history.append((collection, links_for_collection))
+_MSK = ZoneInfo("Europe/Moscow")
 
-    return templates.TemplateResponse(
-        request,
-        "daily_digest.html",
-        {"latest_collection": latest_collection, "latest_links": latest_links, "history": history},
-    )
+
+def _is_today_msk(dt: datetime) -> bool:
+    return dt.astimezone(_MSK).date() == datetime.now(_MSK).date()
 
 
 _WEEKDAY_NAMES = {
@@ -254,23 +248,38 @@ _WEEKDAY_NAMES = {
 }
 
 
+@app.get("/daily-digest", response_class=HTMLResponse)
+async def daily_digest_page(request: Request):
+    """Автоматический ежедневный топ-10 свежих статей (Celery Beat, 12:00 МСК)."""
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        history = await list_digest_history(session, DAILY_DIGEST_THEME, limit=30)
+
+    return templates.TemplateResponse(
+        request,
+        "daily_digest.html",
+        {"history": history, "is_today_msk": _is_today_msk},
+    )
+
+
+@app.get("/daily-digest/{digest_id}", response_class=HTMLResponse)
+async def daily_digest_detail_page(request: Request, digest_id: int):
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        collection = await session.get(Collection, digest_id)
+    if collection is None or collection.theme != DAILY_DIGEST_THEME:
+        return HTMLResponse("Digest not found", status_code=404)
+    return templates.TemplateResponse(
+        request, "digest_detail.html", {"collection": collection, "back_href": "/daily-digest"}
+    )
+
+
 @app.get("/weekly-digest", response_class=HTMLResponse)
 async def weekly_digest_page(request: Request):
-    """F-74: раздел «Подборки»."""
     settings = get_settings()
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
-        rows = (
-            (
-                await session.execute(
-                    select(Collection)
-                    .where(Collection.theme != DAILY_TOP3_THEME)
-                    .order_by(Collection.created_at.desc())
-                )
-            )
-            .scalars()
-            .all()
-        )
+        history = await list_digest_history(session, WEEKLY_DIGEST_THEME, limit=30)
 
     weekday = _WEEKDAY_NAMES.get(settings.collection_cron_day, settings.collection_cron_day)
     schedule_note = (
@@ -278,7 +287,21 @@ async def weekly_digest_page(request: Request):
     )
 
     return templates.TemplateResponse(
-        request, "weekly_digest.html", {"collections": rows, "schedule_note": schedule_note}
+        request,
+        "weekly_digest.html",
+        {"history": history, "schedule_note": schedule_note, "is_today_msk": _is_today_msk},
+    )
+
+
+@app.get("/weekly-digest/{digest_id}", response_class=HTMLResponse)
+async def weekly_digest_detail_page(request: Request, digest_id: int):
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        collection = await session.get(Collection, digest_id)
+    if collection is None or collection.theme != WEEKLY_DIGEST_THEME:
+        return HTMLResponse("Digest not found", status_code=404)
+    return templates.TemplateResponse(
+        request, "digest_detail.html", {"collection": collection, "back_href": "/weekly-digest"}
     )
 
 

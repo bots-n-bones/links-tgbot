@@ -17,7 +17,6 @@ from api.templates_env import templates
 from db.models import Collection, Link, LinkSource, LinkTag, Tag
 from db.session import get_sessionmaker
 from shared.tag_normalizer import normalize_tags
-from worker.collections import DAILY_TOP3_THEME
 
 router = APIRouter(prefix="/api/links", tags=["links"])
 
@@ -94,32 +93,31 @@ async def query_links(
     return LinkListResult(items=items, total=total, page=page, page_size=page_size)
 
 
-async def get_latest_daily_top3(session: AsyncSession) -> tuple[Collection | None, list[Link]]:
-    """Последняя ежедневная подборка топ-3 (Celery Beat, 12:00) — заменяет
-    старый блок «Сейчас в топе у команды»."""
-    collection = await session.scalar(
+async def get_latest_digest(session: AsyncSession, theme: str) -> Collection | None:
+    return await session.scalar(
         select(Collection)
-        .where(Collection.theme == DAILY_TOP3_THEME)
+        .where(Collection.theme == theme)
         .order_by(Collection.created_at.desc())
         .limit(1)
     )
-    if collection is None or not collection.link_ids:
-        return None, []
 
-    links = list(
+
+async def list_digest_history(
+    session: AsyncSession, theme: str, *, offset: int = 0, limit: int = 10
+) -> list[Collection]:
+    return list(
         (
             await session.execute(
-                select(Link).where(Link.id.in_(collection.link_ids), Link.is_hidden.is_(False))
+                select(Collection)
+                .where(Collection.theme == theme)
+                .order_by(Collection.created_at.desc())
+                .offset(offset)
+                .limit(limit)
             )
         )
         .scalars()
         .all()
     )
-    order = {link_id: i for i, link_id in enumerate(collection.link_ids)}
-    links.sort(key=lambda link: order.get(link.id, len(order)))
-    for link in links:
-        await session.refresh(link, attribute_names=["tags"])
-    return collection, links
 
 
 async def list_all_tags(session: AsyncSession) -> list[tuple[str, int]]:

@@ -2,50 +2,29 @@
 {% block title %}Daily digest — Nova-260{% endblock %}
 {% block content %}
 <div class="eyebrow">Daily digest</div>
-<h1>Daily top picks</h1>
-<p class="card-meta" style="margin-bottom: 20px;">Refreshed automatically every day at 12:00 MSK, based on demand over the last 7 days.</p>
+<h1>Daily digest</h1>
+<p class="card-meta" style="margin-bottom: 20px;">Top 10 fresh articles from the web, picked by GPT every day at 12:00 MSK to match the quality bar of what the team saved in the last 24 hours.</p>
 
-{% if latest_collection %}
 <div class="panel">
-  <div class="panel-header">
-    <span class="panel-title">Latest — {{ latest_collection.created_at.strftime('%b %d, %Y at %H:%M') }}</span>
-  </div>
+  {% if history %}
   <div class="row-list">
-    {% for link in latest_links %}
+    {% for collection in history %}
       <div class="row-item">
         <div class="row-main">
           <div class="row-title">
-            <span class="click-count">{{ "%02d"|format(loop.index) }}</span>
-            <a href="/links/{{ link.id }}">{{ link.title or link.url }}</a>
+            <a href="/daily-digest/{{ collection.id }}">{{ collection.created_at.strftime('%b %d, %Y') }}</a>
+            {% if is_today_msk(collection.created_at) %}<span class="badge">Actual</span>{% endif %}
           </div>
-          {% if link.description %}<p class="row-desc">{{ link.description }}</p>{% endif %}
+          <div class="row-meta">{{ (collection.articles or [])|length }} article{{ 's' if (collection.articles or [])|length != 1 else '' }}</div>
         </div>
         <div class="row-actions">
-          <a class="btn" href="/links/{{ link.id }}">View</a>
+          <a class="btn" href="/daily-digest/{{ collection.id }}">Open</a>
         </div>
       </div>
     {% endfor %}
   </div>
+  {% else %}
+    <p class="panel-empty">No digest yet — the first one will be collected automatically.</p>
+  {% endif %}
 </div>
-{% else %}
-<div class="panel"><p class="panel-empty">No digest yet — the first one will be collected automatically.</p></div>
-{% endif %}
-
-{% if history %}
-<h2>History</h2>
-<div class="panel">
-  <div class="row-list">
-    {% for collection, links in history %}
-      <div class="row-item">
-        <div class="row-main">
-          <div class="row-title">{{ collection.created_at.strftime('%b %d, %Y at %H:%M') }}</div>
-          <div class="row-meta">
-            {% for link in links %}<a href="/links/{{ link.id }}">{{ link.title or link.url }}</a>{% if not loop.last %} · {% endif %}{% endfor %}
-          </div>
-        </div>
-      </div>
-    {% endfor %}
-  </div>
-</div>
-{% endif %}
 {% endblock %}

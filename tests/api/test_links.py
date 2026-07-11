@@ -193,23 +193,28 @@ async def test_index_page_has_no_old_top_block(db_session):
     assert "Сейчас в топе у команды" not in resp.text
 
 
-async def test_daily_digest_page_shows_latest_picks(db_session):
+async def test_daily_digest_page_lists_digest(db_session):
     from db.models import Collection
 
-    link = await _make_link(db_session, url="https://top3.com", title="В топ-3", priority_score=9.0)
     collection = Collection(
-        title="Top 3 new picks",
-        theme="daily-top3",
-        summary_md="Automatic pick by demand.",
-        link_ids=[link.id],
+        title="Daily digest — Jul 11, 2026",
+        theme="daily-digest",
+        summary_md="",
+        articles=[{"title": "Great find", "url": "https://a.com", "description": "why"}],
     )
     db_session.add(collection)
     await db_session.commit()
+    await db_session.refresh(collection)
 
     with TestClient(app) as client:
         resp = client.get("/daily-digest")
-    assert resp.status_code == 200
-    assert "В топ-3" in resp.text
+        assert resp.status_code == 200
+        assert "1 article" in resp.text
+
+        detail = client.get(f"/daily-digest/{collection.id}")
+    assert detail.status_code == 200
+    assert "Great find" in detail.text
+    assert '<a href="https://a.com"' in detail.text
 
 
 async def test_index_page_renders(db_session):

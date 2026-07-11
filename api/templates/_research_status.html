@@ -1,10 +1,11 @@
 {% if report %}
 <div id="research-result" class="card">
-  <div class="markdown-block">{{ report.report_md }}</div>
-  {% if report.sources %}
-  <p class="card-meta" style="margin-top: 12px;">Sources found: {{ report.sources|length }}</p>
+  <div class="markdown-block">{{ report_html|safe }}</div>
+  {% if report.sources_json %}
+  <p class="card-meta" style="margin-top: 12px;">Sources found: {{ report.sources_json|length }}</p>
   {% endif %}
   <div class="card-actions">
+    <a class="btn" href="/research/{{ report.id }}/download" download>Download .md</a>
     <button class="btn" hx-post="/research/{{ report.id }}/add-links" hx-target="#add-links-result" hx-swap="innerHTML">
       Add found links to the database
     </button>

@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}{{ collection.title }} — Nova-260{% endblock %}
+{% block content %}
+<a href="{{ back_href }}" class="back-link">&larr; back</a>
+<div class="eyebrow">{{ "Daily digest" if collection.theme == "daily-digest" else "Weekly digest" }}</div>
+<h1>{{ collection.title }}</h1>
+
+<div class="panel">
+  {% if collection.articles %}
+  <div class="row-list">
+    {% for article in collection.articles %}
+      <div class="row-item">
+        <div class="row-main">
+          <div class="row-title"><a href="{{ article.url }}" target="_blank" rel="noopener">{{ article.title }}</a></div>
+          {% if article.description %}<p class="row-desc">{{ article.description }}</p>{% endif %}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+  {% else %}
+    <p class="panel-empty">No articles in this digest.</p>
+  {% endif %}
+</div>
+{% endblock %}

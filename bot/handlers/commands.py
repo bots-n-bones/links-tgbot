@@ -11,6 +11,7 @@ from bot.formatting import format_link_list_html, format_qa_reply_html
 from db.models import Collection, Link, LinkSource, LinkTag, Tag
 from db.session import get_sessionmaker
 from shared.config import get_settings
+from worker.collections import format_digest_text
 from worker.rag import answer_question
 
 router = Router(name="commands")
@@ -113,8 +114,7 @@ async def cmd_digest(message: Message) -> None:
         await message.answer("Подборок пока нет — первая соберётся автоматически по расписанию.")
         return
 
-    text = f"{collection.title}\n\n{collection.summary_md}"
-    await message.answer(text[:4000])
+    await message.answer(format_digest_text(collection))
 
 
 @router.message(Command("stats"))

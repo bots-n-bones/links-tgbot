@@ -10,9 +10,23 @@ class ChangelogEntry:
     summary: list[str]
 
 
-CURRENT_VERSION = "1.2.0"
+CURRENT_VERSION = "1.3.0"
 
 CHANGELOG: list[ChangelogEntry] = [
+    ChangelogEntry(
+        version="1.3.0",
+        date="2026-07-12",
+        summary=[
+            "Daily/weekly digest rebuilt: GPT ranks the team's recent links by topic, "
+            "then live-searches the web for freshly published articles matching that "
+            "quality bar and picks a top 10 (kept in the digest only, not added to Links)",
+            "Digest pages now show a date-titled list with an Actual badge for today's "
+            "entry and open into a dedicated page per digest (title, link, description)",
+            "Research reports: links inside the report text are now clickable, and "
+            "reports can be downloaded as a .md file",
+            "Footer version link is now visibly clickable (underlined accent color)",
+        ],
+    ),
     ChangelogEntry(
         version="1.2.0",
         date="2026-07-11",

@@ -18,23 +18,25 @@ def _link_html(url: str, title: str | None) -> str:
     return f'<a href="{html.escape(url, quote=True)}">{html.escape(title or url)}</a>'
 
 
-def _render_answer_html(answer: str) -> str:
-    """Экранирует текст ответа и превращает [title](url) в кликабельные ссылки."""
+def render_markdown_links_html(text: str) -> str:
+    """Экранирует текст и превращает markdown-ссылки [title](url) в кликабельные
+    <a> — переиспользуется для /ask-ответов, research-отчётов и дайджестов,
+    где LLM сам пишет ссылки в этом синтаксисе."""
     parts: list[str] = []
     last_end = 0
-    for m in _MD_LINK_RE.finditer(answer):
-        parts.append(html.escape(answer[last_end : m.start()]))
+    for m in _MD_LINK_RE.finditer(text):
+        parts.append(html.escape(text[last_end : m.start()]))
         parts.append(_link_html(m.group(2), m.group(1)))
         last_end = m.end()
-    parts.append(html.escape(answer[last_end:]))
+    parts.append(html.escape(text[last_end:]))
     return "".join(parts)
 
 
 def format_qa_reply_html(result: QAResult) -> str:
     """Для /ask — явного запроса к базе: сам ответ уже содержит кликабельные
-    ссылки (см. _render_answer_html), отдельный список источников под ним
-    был бы дублированием."""
-    return _render_answer_html(result.answer)
+    ссылки (см. render_markdown_links_html), отдельный список источников под
+    ним был бы дублированием."""
+    return render_markdown_links_html(result.answer)
 
 
 def format_link_list_html(links: list[Link]) -> str:

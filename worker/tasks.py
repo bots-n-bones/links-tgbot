@@ -28,7 +28,7 @@ from shared.config import get_settings
 from shared.tag_normalizer import normalize_tags
 from shared.telegram_throttle import send_message_throttled
 from shared.url_normalizer import normalize_url, url_hash
-from worker.collections import generate_daily_top3, generate_weekly_collection
+from worker.collections import format_digest_text, generate_daily_digest, generate_weekly_digest
 from worker.embeddings import get_embedding_client
 from worker.fetcher import FetchError, fetch_metadata
 from worker.llm import get_llm_client
@@ -53,14 +53,14 @@ app.conf.beat_schedule = {
             hour=",".join(str(h) for h in _settings.batch_cron_hour_list), minute=0
         ),
     },
-    "generate-weekly-collection": {
-        "task": "worker.tasks.generate_weekly_collection_task",
+    "generate-weekly-digest": {
+        "task": "worker.tasks.generate_weekly_digest_task",
         "schedule": crontab(
             day_of_week=_settings.collection_cron_day, hour=_settings.collection_cron_hour, minute=0
         ),
     },
-    "generate-daily-top3": {
-        "task": "worker.tasks.generate_daily_top3_task",
+    "generate-daily-digest": {
+        "task": "worker.tasks.generate_daily_digest_task",
         "schedule": crontab(hour=12, minute=0),
     },
 }
@@ -566,8 +566,8 @@ def add_research_links(research_report_id: int) -> list[int]:
     return run_task(_add_research_links_async(research_report_id))
 
 
-async def _generate_weekly_collection_and_broadcast_async() -> None:
-    collection = await generate_weekly_collection()
+async def _generate_weekly_digest_and_broadcast_async() -> None:
+    collection = await generate_weekly_digest()
     if collection is None:
         return
 
@@ -576,18 +576,18 @@ async def _generate_weekly_collection_and_broadcast_async() -> None:
         return
     bot = Bot(token=settings.bot_token)
     try:
-        text = f"{collection.title}\n\n{collection.summary_md}"[:4000]
+        text = format_digest_text(collection)
         for user_id in settings.allowed_user_id_list:
             await send_message_throttled(bot, user_id, text)
     finally:
         await bot.session.close()
 
 
-@app.task(name="worker.tasks.generate_weekly_collection_task")
-def generate_weekly_collection_task() -> None:
-    run_task(_generate_weekly_collection_and_broadcast_async())
+@app.task(name="worker.tasks.generate_weekly_digest_task")
+def generate_weekly_digest_task() -> None:
+    run_task(_generate_weekly_digest_and_broadcast_async())
 
 
-@app.task(name="worker.tasks.generate_daily_top3_task")
-def generate_daily_top3_task() -> None:
-    run_task(generate_daily_top3())
+@app.task(name="worker.tasks.generate_daily_digest_task")
+def generate_daily_digest_task() -> None:
+    run_task(generate_daily_digest())

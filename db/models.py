@@ -155,6 +155,9 @@ class Collection(Base):
     period_end: Mapped[date | None] = mapped_column(Date)
     summary_md: Mapped[str] = mapped_column(Text, nullable=False)
     link_ids: Mapped[list | None] = mapped_column(JSONB)
+    # Внешние статьи, найденные веб-поиском для daily/weekly digest (не наши
+    # сохранённые ссылки) — [{"title": str, "url": str, "description": str}, ...]
+    articles: Mapped[list | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
