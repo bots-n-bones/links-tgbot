@@ -18,12 +18,15 @@ WEBHOOK_PATH = "/telegram/webhook"
 WEBHOOK_PORT = 8080  # за nginx (Фаза 8, прод docker-compose), наружу не публикуется напрямую
 
 # Меню команд Telegram (кнопка рядом с полем ввода) — соответствует HELP_TEXT.
+# Основной способ взаимодействия — инлайн-кнопки (bot/keyboards.py) на /start и
+# /help; команды остаются как явный способ вызвать то же самое вводом текста.
 BOT_COMMANDS = [
-    BotCommand(command="start", description="Приветствие и инструкция"),
-    BotCommand(command="help", description="Справка по командам"),
+    BotCommand(command="start", description="Приветствие и меню"),
+    BotCommand(command="help", description="Справка и меню"),
     BotCommand(command="ask", description="Вопрос к базе ссылок"),
     BotCommand(command="search", description="Краткий список ссылок по теме"),
-    BotCommand(command="digest", description="Последняя тематическая подборка"),
+    BotCommand(command="daily_digest", description="Ежедневная подборка"),
+    BotCommand(command="weekly_digest", description="Еженедельная подборка"),
     BotCommand(command="stats", description="Статистика по базе"),
 ]
 
