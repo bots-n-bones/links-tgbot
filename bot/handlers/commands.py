@@ -6,10 +6,11 @@ from aiogram.types import Message
 from sqlalchemy import func, select
 
 from api.routes.links import query_links
-from bot.access import require_whitelisted
+from bot.access import create_invite, require_whitelisted
 from bot.formatting import format_qa_reply
 from db.models import Collection, Link, LinkSource, LinkTag, Tag
 from db.session import get_sessionmaker
+from shared.config import get_settings
 from worker.rag import answer_question
 
 router = Router(name="commands")
@@ -44,6 +45,22 @@ async def cmd_help(message: Message) -> None:
     if not await require_whitelisted(message):
         return
     await message.answer(HELP_TEXT)
+
+
+@router.message(Command("invite"))
+async def cmd_invite(message: Message) -> None:
+    """Админ-команда: сгенерировать одноразовый инвайт-код для нового
+    пользователя (F-44 self-service вместо ручной правки ALLOWED_USER_IDS)."""
+    user_id = message.from_user.id if message.from_user else None
+    if user_id != get_settings().admin_user_id_int:
+        await message.answer("Эта команда доступна только администратору.")
+        return
+    code = await create_invite(created_by=user_id)
+    await message.answer(
+        f"Инвайт-код: {code}\n\n"
+        "Перешлите его новому пользователю — ему нужно написать боту /start "
+        "и в ответ на просьбу ввести этот код сообщением. Код одноразовый."
+    )
 
 
 @router.message(Command("ask"))

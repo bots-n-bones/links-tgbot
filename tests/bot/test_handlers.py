@@ -5,7 +5,7 @@ from sqlalchemy import select
 import bot.handlers.commands as commands_module
 import bot.handlers.group as group_module
 import bot.handlers.private as private_module
-from bot.access import NO_ACCESS_TEXT
+from bot.access import INVITE_INVALID_TEXT, INVITE_REDEEMED_TEXT, NO_ACCESS_TEXT, create_invite
 from bot.handlers.private import HELP_HINT_TEXT
 from db.models import Collection, Link, LinkStatus, LinkTag, RawMessage, SourceType, Tag
 from tests.bot.conftest import WHITELISTED_USER_ID
@@ -110,6 +110,30 @@ async def test_private_handler_denies_non_whitelisted(db_session):
     assert len(rows) == 0
 
 
+async def test_private_handler_redeems_valid_invite_code(db_session):
+    code = await create_invite(created_by=WHITELISTED_USER_ID)
+
+    msg = make_private_message(14, code, sender_id=42)  # не в whitelist
+    await private_module.handle_private_message(msg)
+    assert msg.sent == [INVITE_REDEEMED_TEXT]
+
+    # код одноразовый — второй пользователь тем же кодом доступ не получает
+    msg2 = make_private_message(15, code, sender_id=43)
+    await private_module.handle_private_message(msg2)
+    assert msg2.sent == [INVITE_INVALID_TEXT]
+
+    # погасивший код пользователь теперь в whitelist
+    msg3 = make_private_message(16, None, sender_id=42)
+    await private_module.handle_private_message(msg3)
+    assert msg3.sent == [HELP_HINT_TEXT]
+
+
+async def test_private_handler_rejects_unknown_invite_code(db_session):
+    msg = make_private_message(17, "NOPE1234", sender_id=44)
+    await private_module.handle_private_message(msg)
+    assert msg.sent == [INVITE_INVALID_TEXT]
+
+
 async def test_private_handler_whitelisted_with_url_ingests(db_session, monkeypatch):
     enqueued: list[int] = []
     monkeypatch.setattr(private_module, "enqueue_processing", lambda rid: enqueued.append(rid))
@@ -142,13 +166,13 @@ async def test_private_handler_whitelisted_no_text_routes_to_help_hint(db_sessio
 # --- commands ---
 
 
-async def test_cmd_start_denied_for_non_whitelisted():
+async def test_cmd_start_denied_for_non_whitelisted(db_session):
     msg = make_private_message(20, "/start", sender_id=1)
     await commands_module.cmd_start(msg)
     assert msg.sent == [NO_ACCESS_TEXT]
 
 
-async def test_cmd_start_whitelisted():
+async def test_cmd_start_whitelisted(db_session):
     msg = make_private_message(21, "/start", sender_id=WHITELISTED_USER_ID)
     await commands_module.cmd_start(msg)
     assert msg.sent == [commands_module.START_TEXT]
@@ -158,6 +182,29 @@ async def test_cmd_help_whitelisted():
     msg = make_private_message(22, "/help", sender_id=WHITELISTED_USER_ID)
     await commands_module.cmd_help(msg)
     assert msg.sent == [commands_module.HELP_TEXT]
+
+
+async def test_cmd_invite_denied_for_non_admin(db_session):
+    msg = make_private_message(31, "/invite", sender_id=WHITELISTED_USER_ID)  # не админ
+    await commands_module.cmd_invite(msg)
+    assert msg.sent == ["Эта команда доступна только администратору."]
+
+
+async def test_cmd_invite_generates_redeemable_code(db_session, monkeypatch):
+    monkeypatch.setenv("ADMIN_USER_ID", "777")
+    from shared import config as config_module
+
+    config_module.get_settings.cache_clear()
+
+    msg = make_private_message(32, "/invite", sender_id=777)
+    await commands_module.cmd_invite(msg)
+    assert len(msg.sent) == 1
+    assert "Инвайт-код:" in msg.sent[0]
+    code = msg.sent[0].split("Инвайт-код:")[1].splitlines()[0].strip()
+
+    redeem_msg = make_private_message(33, code, sender_id=55)
+    await private_module.handle_private_message(redeem_msg)
+    assert redeem_msg.sent == [INVITE_REDEEMED_TEXT]
 
 
 @dataclass

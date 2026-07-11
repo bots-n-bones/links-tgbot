@@ -158,6 +158,25 @@ class Collection(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class Invite(Base):
+    __tablename__ = "invites"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(16), unique=True, nullable=False)
+    created_by: Mapped[int | None] = mapped_column(BigInteger)
+    redeemed_by: Mapped[int | None] = mapped_column(BigInteger)
+    redeemed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AuthorizedUser(Base):
+    __tablename__ = "authorized_users"
+
+    telegram_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    invite_code: Mapped[str | None] = mapped_column(String(16))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class QALog(Base):
     __tablename__ = "qa_logs"
 

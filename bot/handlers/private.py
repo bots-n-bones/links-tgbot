@@ -1,7 +1,14 @@
 from aiogram import F, Router
 from aiogram.types import Message
 
-from bot.access import require_whitelisted
+from bot.access import (
+    INVITE_INVALID_TEXT,
+    INVITE_REDEEMED_TEXT,
+    NO_ACCESS_TEXT,
+    is_whitelisted,
+    looks_like_invite_code,
+    redeem_invite,
+)
 from bot.extractors import extract_urls
 from bot.formatting import format_qa_reply
 from bot.ingest import enqueue_processing, entities_to_json, ingest_message
@@ -20,7 +27,16 @@ async def handle_private_message(message: Message) -> None:
     """Роутинг по §6.4: URL → добавление; команды перехватываются
     bot/handlers/commands.py раньше (регистрируется первым); текст без
     URL → Q&A (RAG); иное (нет текста вовсе) → подсказка."""
-    if not await require_whitelisted(message):
+    user_id = message.from_user.id if message.from_user else None
+    if not await is_whitelisted(user_id):
+        text = (message.text or message.caption or "").strip()
+        if user_id is not None and text and looks_like_invite_code(text):
+            if await redeem_invite(user_id, text):
+                await message.answer(INVITE_REDEEMED_TEXT)
+            else:
+                await message.answer(INVITE_INVALID_TEXT)
+        else:
+            await message.answer(NO_ACCESS_TEXT)
         return
 
     urls = extract_urls(message)
