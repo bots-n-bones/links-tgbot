@@ -36,13 +36,19 @@ from shared.redact import redact_text
 from shared.tag_normalizer import normalize_tags
 from shared.telegram_throttle import send_message_throttled
 from shared.url_normalizer import normalize_url, url_hash
-from worker.channel_scraper import ChannelScrapeError, ScrapedPost, scrape_channel_posts, validate_channel
+from worker.channel_scraper import (
+    ChannelScrapeError,
+    ScrapedPost,
+    scrape_channel_posts,
+    validate_channel,
+)
 from worker.collections import format_digest_text, generate_daily_digest, generate_weekly_digest
 from worker.embeddings import get_embedding_client
 from worker.fetcher import FetchError, fetch_metadata
 from worker.llm import get_llm_client, normalize_area
 from worker.priority import compute_priority_score
 from worker.search import get_search_client
+from worker.voice_dna import analyze_voice_dna
 
 logger = logging.getLogger(__name__)
 
@@ -779,21 +785,6 @@ def run_channel_parse_job(job_id: int) -> None:
     run_task(_run_channel_parse_job_async(job_id))
 
 
-async def _analyze_channel_voice_dna_async(job_id: int) -> None:
-    """Voice DNA пайплайн (стилометрия + LLM-агрегация + графики) добавляется
-    в волне F (worker/voice_dna.py — см. TZ_CHANNELS.md §7). Пока просто
-    закрывает job без отчёта, чтобы таблица результатов (волна D) была
-    доступна независимо от готовности Voice DNA."""
-    sessionmaker = get_sessionmaker()
-    async with sessionmaker() as session:
-        job = await session.get(ChannelParseJob, job_id)
-        if job is None:
-            return
-        job.status = ChannelParseJobStatus.done
-        job.finished_at = datetime.now(UTC)
-        await session.commit()
-
-
 @app.task(name="worker.tasks.analyze_channel_voice_dna")
 def analyze_channel_voice_dna(job_id: int) -> None:
-    run_task(_analyze_channel_voice_dna_async(job_id))
+    run_task(analyze_voice_dna(job_id))

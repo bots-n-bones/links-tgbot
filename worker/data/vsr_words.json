@@ -1,0 +1,27 @@
+{
+  "concrete": [
+    "table", "chair", "car", "house", "phone", "computer", "book", "tree", "dog", "cat",
+    "water", "bread", "road", "window", "door", "wall", "floor", "roof", "city", "country",
+    "hand", "foot", "eye", "head", "hair", "mountain", "river", "ocean", "sky", "sun",
+    "moon", "star", "rock", "sand", "fire", "rain", "snow", "wind", "cloud", "leaf",
+    "flower", "grass", "bird", "fish", "horse", "cow", "pig", "chicken", "bottle", "glass",
+    "plate", "fork", "knife", "spoon", "cup", "box", "bag", "key", "lock", "clock",
+    "стол", "стул", "машина", "дом", "телефон", "компьютер", "книга", "дерево", "собака", "кошка",
+    "вода", "хлеб", "дорога", "окно", "дверь", "стена", "пол", "крыша", "город", "страна",
+    "рука", "нога", "глаз", "голова", "волосы", "гора", "река", "океан", "небо", "солнце",
+    "луна", "звезда", "камень", "песок", "огонь", "дождь", "снег", "ветер", "облако", "лист",
+    "цветок", "трава", "птица", "рыба", "лошадь", "корова", "бутылка", "стакан", "тарелка", "нож"
+  ],
+  "abstract": [
+    "idea", "concept", "freedom", "love", "justice", "truth", "belief", "theory", "value", "principle",
+    "strategy", "culture", "society", "economy", "philosophy", "opportunity", "risk", "growth", "innovation", "trust",
+    "knowledge", "wisdom", "emotion", "feeling", "thought", "meaning", "purpose", "goal", "vision", "mission",
+    "power", "authority", "responsibility", "ethics", "morality", "identity", "reputation", "success", "failure", "ambition",
+    "happiness", "sadness", "fear", "hope", "faith", "doubt", "curiosity", "creativity", "intelligence", "consciousness",
+    "идея", "концепция", "свобода", "любовь", "справедливость", "правда", "вера", "теория", "ценность", "принцип",
+    "стратегия", "культура", "общество", "экономика", "философия", "возможность", "риск", "рост", "инновация", "доверие",
+    "знание", "мудрость", "эмоция", "чувство", "мысль", "смысл", "цель", "видение", "миссия", "власть",
+    "ответственность", "этика", "мораль", "идентичность", "репутация", "успех", "неудача", "амбиция", "счастье", "грусть",
+    "страх", "надежда", "сомнение", "любопытство", "творчество", "интеллект", "сознание", "будущее", "прошлое", "потенциал"
+  ]
+}

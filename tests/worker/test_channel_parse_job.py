@@ -183,15 +183,3 @@ async def test_collect_urls_is_deterministic_per_channel():
     id_c = tasks_module._channel_url_chat_id("otherchannel")
     assert id_a == id_b
     assert id_a != id_c
-
-
-async def test_analyze_channel_voice_dna_marks_job_done(db_session):
-    job = await _make_job(db_session)
-    job.status = ChannelParseJobStatus.analyzing
-    await db_session.commit()
-
-    await tasks_module._analyze_channel_voice_dna_async(job.id)
-
-    await db_session.refresh(job)
-    assert job.status == ChannelParseJobStatus.done
-    assert job.finished_at is not None

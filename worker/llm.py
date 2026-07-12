@@ -16,6 +16,23 @@ from pydantic import BaseModel, Field
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from shared.config import get_settings
+from worker.voice_dna_models import (
+    ContentPillar,
+    ContentSection,
+    InsightsSection,
+    PostVoiceAnalysis,
+    PostVoiceAnalysisBatch,
+    ReportSections,
+    StructureSection,
+    SummarySection,
+    UnderTheHood,
+    VoiceDnaProfile,
+)
+from worker.voice_dna_prompts import (
+    VOICE_DNA_AGGREGATE_SYSTEM,
+    VOICE_DNA_CLASSIFY_SYSTEM,
+    VOICE_DNA_SECTIONS_SYSTEM,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +161,24 @@ class LLMClient(Protocol):
 
     async def classify_post(self, *, text: str, model: str) -> PostClassification: ...
 
+    async def classify_posts_batch(
+        self, *, posts: list[dict], model: str
+    ) -> PostVoiceAnalysisBatch: ...
+
+    async def aggregate_voice_profile(
+        self,
+        *,
+        metrics: dict,
+        post_analyses: list[dict],
+        sample_posts: list[str],
+        language: str,
+        model: str,
+    ) -> VoiceDnaProfile: ...
+
+    async def generate_report_sections(
+        self, *, profile: dict, metrics: dict, chart_summary: str, language: str, model: str
+    ) -> ReportSections: ...
+
 
 def _build_describe_user_prompt(
     *,
@@ -266,6 +301,117 @@ class OpenAILLMClient:
             data = {}
         return PostClassification.model_validate(data)
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=8),
+        retry=retry_if_exception_type(OpenAIError),
+        reraise=True,
+    )
+    async def classify_posts_batch(
+        self, *, posts: list[dict], model: str
+    ) -> PostVoiceAnalysisBatch:
+        user_prompt = (
+            'Wrap your answer as a JSON object: {"items": [<one object per post, '
+            "same schema and order as instructed>]}.\n\n"
+            f"<posts>\n{json.dumps(posts, ensure_ascii=False)}\n</posts>"
+        )
+        response = await self._client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": VOICE_DNA_CLASSIFY_SYSTEM},
+                {"role": "user", "content": user_prompt},
+            ],
+            response_format={"type": "json_object"},
+        )
+        raw = response.choices[0].message.content or "{}"
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            logger.warning(
+                "LLM вернул невалидный JSON для voice DNA batch, использую пустой список"
+            )
+            data = {}
+        if not isinstance(data, dict):
+            data = {}
+        return PostVoiceAnalysisBatch.model_validate(data)
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=8),
+        retry=retry_if_exception_type(OpenAIError),
+        reraise=True,
+    )
+    async def aggregate_voice_profile(
+        self,
+        *,
+        metrics: dict,
+        post_analyses: list[dict],
+        sample_posts: list[str],
+        language: str,
+        model: str,
+    ) -> VoiceDnaProfile:
+        system_prompt = VOICE_DNA_AGGREGATE_SYSTEM.format(language=language)
+        user_prompt = (
+            f"<metrics>\n{json.dumps(metrics, ensure_ascii=False)}\n</metrics>\n\n"
+            f"<post_analyses>\n{json.dumps(post_analyses, ensure_ascii=False)}"
+            "\n</post_analyses>\n\n"
+            f"<sample_posts>\n{json.dumps(sample_posts, ensure_ascii=False)}\n</sample_posts>"
+        )
+        response = await self._client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            response_format={"type": "json_object"},
+        )
+        raw = response.choices[0].message.content or "{}"
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            logger.warning(
+                "LLM вернул невалидный JSON для voice DNA profile, использую пустой профиль"
+            )
+            data = {}
+        if not isinstance(data, dict):
+            data = {}
+        return VoiceDnaProfile.model_validate(data)
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=8),
+        retry=retry_if_exception_type(OpenAIError),
+        reraise=True,
+    )
+    async def generate_report_sections(
+        self, *, profile: dict, metrics: dict, chart_summary: str, language: str, model: str
+    ) -> ReportSections:
+        system_prompt = VOICE_DNA_SECTIONS_SYSTEM.format(language=language)
+        user_prompt = (
+            f"<profile>\n{json.dumps(profile, ensure_ascii=False)}\n</profile>\n\n"
+            f"<metrics>\n{json.dumps(metrics, ensure_ascii=False)}\n</metrics>\n\n"
+            f"<chart_summary>\n{chart_summary}\n</chart_summary>"
+        )
+        response = await self._client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            response_format={"type": "json_object"},
+        )
+        raw = response.choices[0].message.content or "{}"
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            logger.warning(
+                "LLM вернул невалидный JSON для report sections, использую пустые секции"
+            )
+            data = {}
+        if not isinstance(data, dict):
+            data = {}
+        return ReportSections.model_validate(data)
+
 
 class FakeLLMClient:
     """Детерминированные ответы — для тестов и разработки без реального ключа."""
@@ -304,6 +450,112 @@ class FakeLLMClient:
         )
         return PostClassification(
             summary=f"Фейковое резюме поста: {text[:40]}", tags=["dev"], area="tech"
+        )
+
+    async def classify_posts_batch(
+        self, *, posts: list[dict], model: str
+    ) -> PostVoiceAnalysisBatch:
+        self.complete_calls.append(
+            {"system_prompt": "classify_posts_batch", "user_prompt": posts, "model": model}
+        )
+        hook_types = ["rhetorical_question", "bold_claim", "personal_anecdote", "none"]
+        items = [
+            PostVoiceAnalysis(
+                post_id=post["post_id"],
+                hook_type=hook_types[i % len(hook_types)],
+                body_structure="single_block",
+                close_type="summary",
+                register="conversational",
+                specificity="medium",
+                ethos_pathos_logos={"ethos": 0.3, "pathos": 0.3, "logos": 0.4},
+                punctuation_style="minimal",
+                persona_markers=["first_person_singular"],
+                taboos_observed=[],
+                confidence=0.8,
+            )
+            for i, post in enumerate(posts)
+        ]
+        return PostVoiceAnalysisBatch(items=items)
+
+    async def aggregate_voice_profile(
+        self,
+        *,
+        metrics: dict,
+        post_analyses: list[dict],
+        sample_posts: list[str],
+        language: str,
+        model: str,
+    ) -> VoiceDnaProfile:
+        self.complete_calls.append(
+            {"system_prompt": "aggregate_voice_profile", "user_prompt": metrics, "model": model}
+        )
+        return VoiceDnaProfile(
+            confidence=0.75,
+            voice_identity="Фейковый голос канала — для тестов и dev без ключа.",
+            dominant_template="single_block",
+            template_frequency=0.6,
+            tone_dimensions={
+                "funny_serious": 40.0,
+                "formal_casual": 65.0,
+                "respectful_irreverent": 50.0,
+                "enthusiastic_matter_of_fact": 55.0,
+            },
+            tone_of_voice="Фейковое описание тона.",
+            successful_formats="Фейковое описание форматов.",
+            structural_dna="Фейковая структура.",
+            rhythm_analysis="Фейковый ритм.",
+            opening_moves="Фейковые открытия.",
+            closing_moves="Фейковые закрытия.",
+            lexical_profile="Фейковый словарь.",
+            rhetoric_strategy="Фейковая риторика.",
+            content_strategy="Фейковая стратегия контента.",
+            engagement_patterns="Фейковые паттерны вовлечения.",
+            key_insights=["Фейковый инсайт 1", "Фейковый инсайт 2"],
+            hidden_patterns=["Фейковый скрытый паттерн"],
+            under_the_hood=UnderTheHood(cheat_code="Фейковый чит-код."),
+            recommendations=["Фейковая рекомендация"],
+            content_pillars=[ContentPillar(topic="fake topic", share=1.0)],
+            generation_rules=["Фейковое правило генерации"],
+            radar={
+                "rhythm": 70.0,
+                "specificity": 60.0,
+                "register": 65.0,
+                "structure": 55.0,
+                "rhetoric": 60.0,
+                "engagement": 50.0,
+            },
+        )
+
+    async def generate_report_sections(
+        self, *, profile: dict, metrics: dict, chart_summary: str, language: str, model: str
+    ) -> ReportSections:
+        self.complete_calls.append(
+            {"system_prompt": "generate_report_sections", "user_prompt": profile, "model": model}
+        )
+        return ReportSections(
+            summary=SummarySection(
+                voice_identity="Фейковый голос.",
+                tone_of_voice="Фейковый тон.",
+                successful_formats="Фейковые форматы.",
+            ),
+            structure=StructureSection(
+                structural_dna="Фейковая структура.",
+                rhythm_analysis="Фейковый ритм.",
+                opening_moves="Фейковые открытия.",
+                closing_moves="Фейковые закрытия.",
+            ),
+            content=ContentSection(
+                lexical_profile="Фейковый словарь.",
+                rhetoric_strategy="Фейковая риторика.",
+                content_strategy="Фейковая стратегия.",
+                engagement_patterns="Фейковое вовлечение.",
+            ),
+            insights=InsightsSection(
+                key_insights=["Фейковый инсайт 1", "Фейковый инсайт 2"],
+                hidden_patterns=["Фейковый паттерн"],
+                under_the_hood=UnderTheHood(cheat_code="Фейковый чит-код."),
+                recommendations=["Фейковая рекомендация"],
+            ),
         )
 
 
