@@ -1,0 +1,41 @@
+<div class="chart-grid">
+  <div class="chart-card"><canvas data-chart-id="chart_emoji_gauges"></canvas></div>
+  <div class="chart-card"><canvas data-chart-id="chart_persona_bars"></canvas></div>
+</div>
+
+<div class="report-prose">
+  <h4>Key insights</h4>
+  <ul class="insight-list">
+    {% for insight in sections.insights.key_insights %}<li>{{ insight }}</li>{% endfor %}
+  </ul>
+  <h4>Hidden patterns</h4>
+  <ul class="insight-list">
+    {% for pattern in sections.insights.hidden_patterns %}<li>{{ pattern }}</li>{% endfor %}
+  </ul>
+</div>
+
+<div class="under-the-hood-grid">
+  <div class="card">
+    <p class="card-title">Surface markers</p>
+    <p class="report-prose">{{ sections.insights.under_the_hood.surface_markers }}</p>
+  </div>
+  <div class="card">
+    <p class="card-title">Structural habits</p>
+    <p class="report-prose">{{ sections.insights.under_the_hood.structural_habits }}</p>
+  </div>
+  <div class="card">
+    <p class="card-title">Cognitive patterns</p>
+    <p class="report-prose">{{ sections.insights.under_the_hood.cognitive_patterns }}</p>
+  </div>
+  <div class="card">
+    <p class="card-title">Signature lexicon</p>
+    <p class="report-prose">{{ sections.insights.under_the_hood.signature_lexicon }}</p>
+  </div>
+</div>
+
+<p class="cheat-code">🎯 {{ sections.insights.under_the_hood.cheat_code }}</p>
+
+<h4 class="report-prose" style="margin-top: 20px;">Recommendations</h4>
+<ul class="insight-list">
+  {% for rec in sections.insights.recommendations %}<li>{{ rec }}</li>{% endfor %}
+</ul>

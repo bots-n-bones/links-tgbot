@@ -396,6 +396,27 @@
     .wizard-progress-bar { width: 100%; height: 10px; border-radius: var(--radius-pill); background: var(--ghost); overflow: hidden; }
     .wizard-progress-fill { height: 100%; background: var(--accent); border-radius: var(--radius-pill); transition: width 300ms ease; }
 
+    /* --- Voice DNA report (TZ_CHANNELS.md §3.5) --- */
+    .disclaimer { font-family: var(--font-mono); font-size: 11px; color: var(--text-faint); line-height: 1.5; margin: 0 0 20px; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius-md); }
+    .report-tabs { display: flex; gap: 6px; margin-bottom: 20px; flex-wrap: wrap; }
+    .report-tab { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 8px 16px; cursor: pointer; }
+    .report-tab.active { color: var(--ink); background: var(--text); border-color: var(--text); }
+    .report-tab-panel { display: none; }
+    .report-tab-panel.active { display: block; }
+    .kpi-hero { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; margin-bottom: 20px; }
+    .kpi-tile { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px 18px; }
+    .kpi-tile .kpi-value { font-family: var(--font-display); font-size: 40px; font-weight: 500; letter-spacing: -0.5px; line-height: 1.1; }
+    .kpi-tile .kpi-label { font-family: var(--font-mono); font-size: 11px; color: var(--text-faint); margin-top: 6px; letter-spacing: 0.02em; }
+    .chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-bottom: 20px; }
+    .chart-card { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px 18px; min-height: 280px; }
+    .chart-card canvas { max-height: 240px; }
+    .report-prose { line-height: 1.6; margin: 0 0 14px; }
+    .report-prose h4 { font-family: var(--font-display); font-size: 14px; margin: 0 0 6px; color: var(--text-muted); }
+    .insight-list { margin: 0 0 20px; padding-left: 20px; line-height: 1.6; }
+    .insight-list li { margin-bottom: 6px; }
+    .under-the-hood-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 20px; }
+    .cheat-code { font-family: var(--font-mono); font-size: 13px; color: var(--yellow); border: 1px dashed var(--yellow); border-radius: var(--radius-md); padding: 10px 14px; }
+
     /* --- Usefulness score badge + hover tooltip --- */
     .score-badge {
       position: relative;

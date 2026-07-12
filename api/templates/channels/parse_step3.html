@@ -9,6 +9,12 @@
   {% if job.avg_views %} · avg. {{ job.avg_views }} views{% endif %}
 </p>
 
+{% if job.params_json.get("voice_dna") %}
+<div style="margin-bottom: 20px;">
+  <a class="btn btn-primary" href="/channels/parse/{{ job.id }}/report">View Voice DNA report →</a>
+</div>
+{% endif %}
+
 <div class="panel">
   <div class="panel-header">
     <span class="panel-title">Posts</span>

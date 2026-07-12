@@ -13,7 +13,9 @@ from sqlalchemy import select, text
 from api.changelog import CHANGELOG, CURRENT_VERSION
 from api.export import links_to_csv, links_to_markdown, posts_to_csv, posts_to_markdown
 from api.export_channels import channel_posts_to_csv, channel_posts_to_markdown
-from api.routes import ask, channels as channels_routes, collections, links, posts as posts_routes, research
+from api.routes import ask, collections, links, research
+from api.routes import channels as channels_routes
+from api.routes import posts as posts_routes
 from api.routes.links import (
     get_link_detail,
     list_all_tags,
@@ -25,9 +27,10 @@ from api.templates_env import templates
 from bot.formatting import format_qa_reply_html, render_markdown_links_html
 from bot.ingest import enqueue_post_processing, enqueue_processing, ingest_message
 from db.models import (
-    ChannelParseJob,
-    ChannelParseJobStatus,
     ChannelParsedPost,
+    ChannelParseJob,
+    ChannelVoiceReport,
+    ChannelVoiceReportStatus,
     Collection,
     Link,
     Post,
@@ -544,7 +547,60 @@ async def export_channel_posts_csv(job_id: int):
 @app.get("/channels/parse/{job_id}/export/posts.md")
 async def export_channel_posts_md(job_id: int):
     _job, posts = await _load_channel_job_and_posts(job_id, "date")
-    return _download(channel_posts_to_markdown(posts), f"channel-{job_id}-posts.md", "text/markdown")
+    return _download(
+        channel_posts_to_markdown(posts), f"channel-{job_id}-posts.md", "text/markdown"
+    )
+
+
+async def _load_channel_job_and_report(
+    job_id: int,
+) -> tuple[ChannelParseJob | None, ChannelVoiceReport | None]:
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        job = await session.get(ChannelParseJob, job_id)
+        if job is None:
+            return None, None
+        report = (
+            await session.execute(
+                select(ChannelVoiceReport).where(ChannelVoiceReport.job_id == job_id)
+            )
+        ).scalar_one_or_none()
+    return job, report
+
+
+@app.get("/channels/parse/{job_id}/report", response_class=HTMLResponse)
+async def channel_parse_report_page(request: Request, job_id: int):
+    """Шаг 4 wizard'а — Voice DNA отчёт (TZ_CHANNELS.md §3.5)."""
+    job, report = await _load_channel_job_and_report(job_id)
+    if job is None:
+        return HTMLResponse("Job not found", status_code=404)
+
+    report_ready = report is not None and report.status == ChannelVoiceReportStatus.done
+    date_range = "—"
+    if job.date_range_from and job.date_range_to:
+        date_range = f"{job.date_range_from.isoformat()} – {job.date_range_to.isoformat()}"
+
+    return templates.TemplateResponse(
+        request,
+        "channels/parse_step4_report.html",
+        {
+            "job": job,
+            "report": report,
+            "report_ready": report_ready,
+            "date_range": date_range,
+            "profile": (report.profile_json or {}) if report_ready else {},
+            "sections": (report.report_sections_json or {}) if report_ready else {},
+            "chart_data": (report.chart_data_json or {}) if report_ready else {},
+        },
+    )
+
+
+@app.get("/channels/parse/{job_id}/export/report.md")
+async def export_channel_report_md(job_id: int):
+    job, report = await _load_channel_job_and_report(job_id)
+    if job is None or report is None or not report.report_md:
+        return HTMLResponse("Report not available", status_code=404)
+    return _download(report.report_md, f"channel-{job_id}-voice-dna-report.md", "text/markdown")
 
 
 @app.get("/changelog", response_class=HTMLResponse)
@@ -656,9 +712,7 @@ async def export_links_csv():
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         links = (
-            (await session.execute(select(Link).where(Link.is_hidden.is_(False))))
-            .scalars()
-            .all()
+            (await session.execute(select(Link).where(Link.is_hidden.is_(False)))).scalars().all()
         )
         for link in links:
             await session.refresh(link, attribute_names=["tags"])
@@ -670,9 +724,7 @@ async def export_links_md():
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         links = (
-            (await session.execute(select(Link).where(Link.is_hidden.is_(False))))
-            .scalars()
-            .all()
+            (await session.execute(select(Link).where(Link.is_hidden.is_(False)))).scalars().all()
         )
         for link in links:
             await session.refresh(link, attribute_names=["tags"])
@@ -684,9 +736,7 @@ async def export_posts_csv():
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         posts = (
-            (await session.execute(select(Post).where(Post.is_hidden.is_(False))))
-            .scalars()
-            .all()
+            (await session.execute(select(Post).where(Post.is_hidden.is_(False)))).scalars().all()
         )
         for post in posts:
             await session.refresh(post, attribute_names=["tags"])
@@ -698,9 +748,7 @@ async def export_posts_md():
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         posts = (
-            (await session.execute(select(Post).where(Post.is_hidden.is_(False))))
-            .scalars()
-            .all()
+            (await session.execute(select(Post).where(Post.is_hidden.is_(False)))).scalars().all()
         )
         for post in posts:
             await session.refresh(post, attribute_names=["tags"])

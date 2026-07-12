@@ -10,12 +10,23 @@ class ChangelogEntry:
     summary: list[str]
 
 
-CURRENT_VERSION = "1.9.0"
+CURRENT_VERSION = "2.0.0"
 
 # date: "YYYY-MM-DD HH:MM" — несколько релизов за день не редкость, время
 # нужно, чтобы порядок и дата были действительно проверяемы (см. git log),
 # а не проставлены на глаз задним числом.
 CHANGELOG: list[ChangelogEntry] = [
+    ChangelogEntry(
+        version="2.0.0",
+        date="2026-07-12 17:05",
+        summary=[
+            "Voice DNA report — a full stylometric + AI-written analysis of a "
+            "parsed channel's writing style: tone, structure, rhetoric, and "
+            "engagement patterns, laid out across four tabs (Summary, "
+            "Structure, Content, Insights) with 13 charts",
+            "Voice DNA reports can be downloaded as markdown",
+        ],
+    ),
     ChangelogEntry(
         version="1.9.0",
         date="2026-07-12 13:44",

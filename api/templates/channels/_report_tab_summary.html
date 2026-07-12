@@ -1,0 +1,14 @@
+<div class="chart-grid">
+  <div class="chart-card"><canvas data-chart-id="chart_voice_radar"></canvas></div>
+  <div class="chart-card"><canvas data-chart-id="chart_tone_bars"></canvas></div>
+</div>
+<div class="report-prose">
+  <h4>Voice identity</h4>
+  <p>{{ sections.summary.voice_identity }}</p>
+  <h4>Dominant template</h4>
+  <p>{{ profile.dominant_template }} ({{ ((profile.template_frequency or 0) * 100) | round | int }}%)</p>
+  <h4>Tone of voice</h4>
+  <p>{{ sections.summary.tone_of_voice }}</p>
+  <h4>Successful formats</h4>
+  <p>{{ sections.summary.successful_formats }}</p>
+</div>

@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Voice DNA — @{{ job.channel_username }} — Nova-260{% endblock %}
+{% block content %}
+<div class="eyebrow">Channels</div>
+<h1>Voice DNA — @{{ job.channel_username }}</h1>
+
+<div class="disclaimer">
+  Отчёт сгенерирован на основе стилометрического анализа и LLM-интерпретации. Метрики вычислены
+  автоматически; текстовые выводы — субъективная оценка алгоритма, не утверждение о фактах.
+</div>
+
+{% if not report_ready %}
+  <div class="card">
+    <p class="card-title">Voice DNA report unavailable</p>
+    <p class="card-meta">
+      {% if report and report.status.value == "failed" %}
+        The analysis failed for this job — the parsed posts are still available in the results table.
+      {% else %}
+        This job hasn't finished analyzing yet, or Voice DNA wasn't requested.
+      {% endif %}
+    </p>
+    <a class="btn" href="/channels/parse/{{ job.id }}/results">← Back to table</a>
+  </div>
+{% else %}
+
+<div class="kpi-hero">
+  <div class="kpi-tile">
+    <div class="kpi-value">{{ job.avg_views if job.avg_views is not none else "—" }}</div>
+    <div class="kpi-label">Avg. views</div>
+  </div>
+  <div class="kpi-tile">
+    <div class="kpi-value">{{ job.posts_count }}</div>
+    <div class="kpi-label">Analyzed posts</div>
+  </div>
+  <div class="kpi-tile">
+    <div class="kpi-value" style="font-size: 22px;">{{ date_range }}</div>
+    <div class="kpi-label">Date range</div>
+  </div>
+  <div class="kpi-tile">
+    <div class="kpi-value">{{ ((profile.confidence or 0) * 100) | round | int }}%</div>
+    <div class="kpi-label">Confidence</div>
+  </div>
+</div>
+
+<div class="report-tabs">
+  <button class="report-tab active" data-tab="summary" onclick="showReportTab('summary')">① Summary</button>
+  <button class="report-tab" data-tab="structure" onclick="showReportTab('structure')">② Structure</button>
+  <button class="report-tab" data-tab="content" onclick="showReportTab('content')">③ Content</button>
+  <button class="report-tab" data-tab="insights" onclick="showReportTab('insights')">④ Insights</button>
+</div>
+
+<div id="report-tab-summary" class="report-tab-panel active">
+  {% include "channels/_report_tab_summary.html" %}
+</div>
+<div id="report-tab-structure" class="report-tab-panel">
+  {% include "channels/_report_tab_structure.html" %}
+</div>
+<div id="report-tab-content" class="report-tab-panel">
+  {% include "channels/_report_tab_content.html" %}
+</div>
+<div id="report-tab-insights" class="report-tab-panel">
+  {% include "channels/_report_tab_insights.html" %}
+</div>
+
+<div class="card-actions" style="justify-content: flex-end; border-top: none; padding-top: 0;">
+  <a class="btn" href="/channels/parse/{{ job.id }}/results">← Back to table</a>
+  <a class="btn" href="/channels/parse/{{ job.id }}/export/report.md">Download report MD</a>
+</div>
+
+<script type="application/json" id="chart-data">{{ chart_data | tojson }}</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="/static/js/voice-dna-charts.js"></script>
+<script>
+  function showReportTab(name) {
+    document.querySelectorAll(".report-tab").forEach(function (btn) {
+      btn.classList.toggle("active", btn.dataset.tab === name);
+    });
+    document.querySelectorAll(".report-tab-panel").forEach(function (panel) {
+      panel.classList.toggle("active", panel.id === "report-tab-" + name);
+    });
+  }
+</script>
+{% endif %}
+{% endblock %}
