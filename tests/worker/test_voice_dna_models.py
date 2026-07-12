@@ -1,7 +1,9 @@
 from worker.voice_dna_models import (
+    InsightsSection,
     PostVoiceAnalysis,
     PostVoiceAnalysisBatch,
     ReportSections,
+    UnderTheHood,
     VoiceDnaProfile,
 )
 
@@ -52,3 +54,38 @@ def test_report_sections_fills_nested_defaults():
     assert sections.summary.voice_identity == "x"
     assert sections.structure.structural_dna == ""
     assert sections.insights.key_insights == []
+
+
+def test_voice_dna_profile_coerces_dict_key_insights_to_list():
+    # Real prod failure: the aggregate LLM call returned key_insights as a
+    # labeled object instead of an array, and pydantic rejected it outright.
+    profile = VoiceDnaProfile.model_validate(
+        {
+            "key_insights": {
+                "view_correlation": "Posts with questions get 2x views.",
+                "hook_efficacy": "Bold claims outperform single_block structures.",
+            }
+        }
+    )
+    assert profile.key_insights == [
+        "view_correlation: Posts with questions get 2x views.",
+        "hook_efficacy: Bold claims outperform single_block structures.",
+    ]
+
+
+def test_voice_dna_profile_coerces_string_and_none_list_fields():
+    profile = VoiceDnaProfile.model_validate(
+        {"hidden_patterns": "Only one pattern, sent as a bare string.", "recommendations": None}
+    )
+    assert profile.hidden_patterns == ["Only one pattern, sent as a bare string."]
+    assert profile.recommendations == []
+
+
+def test_under_the_hood_coerces_dict_taboos():
+    hood = UnderTheHood.model_validate({"taboos": {"topic": "politics"}})
+    assert hood.taboos == ["topic: politics"]
+
+
+def test_insights_section_coerces_dict_key_insights():
+    insights = InsightsSection.model_validate({"key_insights": {"a": "one", "b": "two"}})
+    assert insights.key_insights == ["a: one", "b: two"]

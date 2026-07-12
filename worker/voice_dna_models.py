@@ -5,7 +5,24 @@
 неполный JSON не должен ронять job, лишние поля отбрасываются pydantic'ом.
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+def _coerce_str_list(v: object) -> object:
+    """The aggregate/sections LLM calls sometimes return a labeled object
+    instead of a flat array for a `list[str]` field (e.g. key_insights as
+    {"view_correlation": "...", "hook_efficacy": "..."} instead of a list) —
+    a real prod failure (pydantic ValidationError) rather than a hypothetical
+    one. Flatten instead of rejecting, so a schema slip doesn't fail the job."""
+    if v is None:
+        return []
+    if isinstance(v, str):
+        return [v]
+    if isinstance(v, dict):
+        return [f"{key}: {value}" for key, value in v.items()]
+    if isinstance(v, list):
+        return [item if isinstance(item, str) else str(item) for item in v]
+    return [str(v)]
 
 
 class PostVoiceAnalysis(BaseModel):
@@ -20,6 +37,10 @@ class PostVoiceAnalysis(BaseModel):
     persona_markers: list[str] = Field(default_factory=list)
     taboos_observed: list[str] = Field(default_factory=list)
     confidence: float = 0.5
+
+    _coerce_lists = field_validator("persona_markers", "taboos_observed", mode="before")(
+        _coerce_str_list
+    )
 
 
 class PostVoiceAnalysisBatch(BaseModel):
@@ -38,6 +59,8 @@ class UnderTheHood(BaseModel):
     taboos: list[str] = Field(default_factory=list)
     signature_lexicon: str = ""
     cheat_code: str = ""
+
+    _coerce_lists = field_validator("taboos", mode="before")(_coerce_str_list)
 
 
 class VoiceDnaProfile(BaseModel):
@@ -63,6 +86,10 @@ class VoiceDnaProfile(BaseModel):
     content_pillars: list[ContentPillar] = Field(default_factory=list)
     generation_rules: list[str] = Field(default_factory=list)
     radar: dict[str, float] = Field(default_factory=dict)
+
+    _coerce_lists = field_validator(
+        "key_insights", "hidden_patterns", "recommendations", "generation_rules", mode="before"
+    )(_coerce_str_list)
 
 
 class SummarySection(BaseModel):
@@ -90,6 +117,10 @@ class InsightsSection(BaseModel):
     hidden_patterns: list[str] = Field(default_factory=list)
     under_the_hood: UnderTheHood = Field(default_factory=UnderTheHood)
     recommendations: list[str] = Field(default_factory=list)
+
+    _coerce_lists = field_validator(
+        "key_insights", "hidden_patterns", "recommendations", mode="before"
+    )(_coerce_str_list)
 
 
 class ReportSections(BaseModel):
