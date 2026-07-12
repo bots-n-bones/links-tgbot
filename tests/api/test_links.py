@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from starlette.testclient import TestClient
 
 from api.main import app
-from db.models import Link, LinkSource, LinkStatus, LinkTag, SourceType, Tag
+from db.models import Link, LinkSource, LinkStatus, LinkTag, ManualPriority, SourceType, Tag
 
 
 async def _make_link(
@@ -17,6 +17,7 @@ async def _make_link(
     source_count: int = 1,
     unique_senders: int = 1,
     priority_score: float = 1.0,
+    manual_priority: ManualPriority = ManualPriority.normal,
     is_hidden: bool = False,
     created_days_ago: int = 0,
     chat_title: str | None = None,
@@ -32,6 +33,7 @@ async def _make_link(
         source_count=source_count,
         unique_senders=unique_senders,
         priority_score=priority_score,
+        manual_priority=manual_priority,
         is_hidden=is_hidden,
         created_at=now,
     )
@@ -112,14 +114,28 @@ async def test_list_links_sort_by_count(db_session):
     assert urls == ["https://many.com", "https://few.com"]
 
 
-async def test_list_links_sort_by_priority_default(db_session):
-    await _make_link(db_session, url="https://low.com", title="Low", priority_score=1.0)
-    await _make_link(db_session, url="https://high.com", title="High", priority_score=9.0)
+async def test_list_links_sort_by_priority_uses_manual_priority(db_session):
+    await _make_link(
+        db_session, url="https://low.com", title="Low", manual_priority=ManualPriority.low
+    )
+    await _make_link(
+        db_session, url="https://high.com", title="High", manual_priority=ManualPriority.high
+    )
+
+    with TestClient(app) as client:
+        resp = client.get("/api/links", params={"sort": "priority"})
+    urls = [item["url"] for item in resp.json()["items"]]
+    assert urls == ["https://high.com", "https://low.com"]
+
+
+async def test_list_links_default_sort_is_date(db_session):
+    await _make_link(db_session, url="https://old.com", title="Old", created_days_ago=5)
+    await _make_link(db_session, url="https://new.com", title="New", created_days_ago=0)
 
     with TestClient(app) as client:
         resp = client.get("/api/links")
     urls = [item["url"] for item in resp.json()["items"]]
-    assert urls == ["https://high.com", "https://low.com"]
+    assert urls == ["https://new.com", "https://old.com"]
 
 
 async def test_get_link_detail_includes_sources(db_session):
@@ -171,6 +187,30 @@ async def test_update_link_clears_title_and_description_when_blank(db_session):
     assert data["title"] is None
     assert data["description"] is None
     assert data["tags"] == []
+
+
+async def test_update_link_sets_manual_priority_and_tested(db_session):
+    link = await _make_link(db_session, url="https://a.com", title="A")
+
+    with TestClient(app) as client:
+        resp = client.patch(
+            f"/api/links/{link.id}", data={"priority": "high", "tested": "on"}
+        )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["manual_priority"] == "high"
+    assert data["is_tested"] is True
+
+
+async def test_update_link_unchecked_checkbox_sets_tested_false(db_session):
+    link = await _make_link(db_session, url="https://a.com", title="A")
+    link.is_tested = True
+    await db_session.commit()
+
+    with TestClient(app) as client:
+        resp = client.patch(f"/api/links/{link.id}", data={})
+    assert resp.status_code == 200
+    assert resp.json()["is_tested"] is False
 
 
 async def test_hide_link_excludes_from_default_list(db_session):

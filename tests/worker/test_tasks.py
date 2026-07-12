@@ -275,3 +275,69 @@ async def test_poll_unprocessed_batch_enqueues_only_unprocessed(db_session, monk
 
     assert ids == [rm1.id]
     assert fake_task.calls == [rm1.id]
+
+
+async def test_generate_daily_digest_broadcasts_when_collection_created(monkeypatch):
+    from db.models import Collection
+
+    collection = Collection(
+        id=1, title="Daily digest — Jul 12, 2026", summary_md="", link_ids=[], articles=[]
+    )
+
+    async def fake_generate_daily_digest(**kwargs):
+        return collection
+
+    broadcasted = []
+
+    async def fake_broadcast(c):
+        broadcasted.append(c)
+
+    monkeypatch.setattr(tasks_module, "generate_daily_digest", fake_generate_daily_digest)
+    monkeypatch.setattr(tasks_module, "_broadcast_digest", fake_broadcast)
+
+    await tasks_module._generate_daily_digest_and_broadcast_async()
+
+    assert broadcasted == [collection]
+
+
+async def test_generate_daily_digest_skips_broadcast_when_no_collection(monkeypatch):
+    async def fake_generate_daily_digest(**kwargs):
+        return None
+
+    broadcasted = []
+
+    async def fake_broadcast(c):
+        broadcasted.append(c)
+
+    monkeypatch.setattr(tasks_module, "generate_daily_digest", fake_generate_daily_digest)
+    monkeypatch.setattr(tasks_module, "_broadcast_digest", fake_broadcast)
+
+    await tasks_module._generate_daily_digest_and_broadcast_async()
+
+    assert broadcasted == []
+
+
+async def test_broadcast_digest_sends_to_all_allowed_users(monkeypatch):
+    from db.models import Collection
+    from shared import config as config_module
+
+    monkeypatch.setenv("BOT_TOKEN", "123456789:AAFakeTokenForTestsOnly000000000")
+    monkeypatch.setenv("ALLOWED_USER_IDS", "111,222")
+    config_module.get_settings.cache_clear()
+
+    sent = []
+
+    async def fake_send(bot, chat_id, text, **kwargs):
+        sent.append((chat_id, text))
+
+    monkeypatch.setattr(tasks_module, "send_message_throttled", fake_send)
+
+    collection = Collection(
+        id=1, title="Daily digest — Jul 12, 2026", summary_md="", link_ids=[],
+        articles=[{"title": "A", "url": "https://a.com", "description": "desc"}],
+    )
+    await tasks_module._broadcast_digest(collection)
+
+    config_module.get_settings.cache_clear()
+    assert [chat_id for chat_id, _ in sent] == [111, 222]
+    assert all("Daily digest" in text for _, text in sent)

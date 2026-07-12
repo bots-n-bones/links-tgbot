@@ -51,7 +51,7 @@ async def index(
     request: Request,
     tag: str | None = None,
     area: str | None = None,
-    sort: str = "priority",
+    sort: str = "date",
     page: int = 1,
 ):
     sessionmaker = get_sessionmaker()
@@ -82,7 +82,7 @@ async def partial_links(
     request: Request,
     tag: str | None = None,
     area: str | None = None,
-    sort: str = "priority",
+    sort: str = "date",
     page: int = 1,
 ):
     sessionmaker = get_sessionmaker()
@@ -134,7 +134,7 @@ async def add_link_manual(request: Request, url: str = Form(...)):
 
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
-        result = await query_links(session, sort="priority", page=1)
+        result = await query_links(session, sort="date", page=1)
         posts_by_link = await get_posts_by_link_ids(session, [link.id for link in result.items])
 
     list_response = templates.TemplateResponse(
@@ -148,7 +148,7 @@ async def add_link_manual(request: Request, url: str = Form(...)):
             "page_size": result.page_size,
             "tag": None,
             "area": None,
-            "sort": "priority",
+            "sort": "date",
         },
     )
     status_html = (

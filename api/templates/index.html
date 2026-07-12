@@ -1,5 +1,9 @@
 {% extends "base.html" %}
 {% block content %}
+<div class="eyebrow">Links</div>
+<h1>Links</h1>
+<p class="card-meta" style="margin-bottom: 20px;">Every link the team has captured, in one searchable table.</p>
+
 <div class="panel">
   <div class="panel-header">
     <span class="panel-title">Links</span>
@@ -42,14 +46,14 @@
           </div>
         </details>
         <select name="sort">
-          <option value="priority" {% if sort == "priority" %}selected{% endif %}>By priority</option>
-          <option value="clicks" {% if sort == "clicks" %}selected{% endif %}>By popularity</option>
           <option value="date" {% if sort == "date" %}selected{% endif %}>By date</option>
+          <option value="priority" {% if sort == "priority" %}selected{% endif %}>By priority</option>
+          <option value="tested" {% if sort == "tested" %}selected{% endif %}>By tested</option>
         </select>
       </form>
       <details class="tag-select">
         <summary>+ Add link</summary>
-        <div class="tag-select-menu" style="min-width: 300px; padding: 14px;">
+        <div class="tag-select-menu tag-select-menu-left" style="min-width: 300px; padding: 14px;">
           <form hx-post="/links/add" hx-target="#links-list" hx-swap="outerHTML" style="display: flex; flex-direction: column; gap: 8px;">
             <input type="text" name="url" placeholder="https://…" required class="input-field">
             <button type="submit" class="btn btn-primary">Add</button>

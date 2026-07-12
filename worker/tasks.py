@@ -570,11 +570,7 @@ def add_research_links(research_report_id: int) -> list[int]:
     return run_task(_add_research_links_async(research_report_id))
 
 
-async def _generate_weekly_digest_and_broadcast_async() -> None:
-    collection = await generate_weekly_digest()
-    if collection is None:
-        return
-
+async def _broadcast_digest(collection: Collection) -> None:
     settings = get_settings()
     if not settings.bot_token:
         return
@@ -587,6 +583,20 @@ async def _generate_weekly_digest_and_broadcast_async() -> None:
         await bot.session.close()
 
 
+async def _generate_weekly_digest_and_broadcast_async() -> None:
+    collection = await generate_weekly_digest()
+    if collection is None:
+        return
+    await _broadcast_digest(collection)
+
+
+async def _generate_daily_digest_and_broadcast_async() -> None:
+    collection = await generate_daily_digest()
+    if collection is None:
+        return
+    await _broadcast_digest(collection)
+
+
 @app.task(name="worker.tasks.generate_weekly_digest_task")
 def generate_weekly_digest_task() -> None:
     run_task(_generate_weekly_digest_and_broadcast_async())
@@ -594,7 +604,7 @@ def generate_weekly_digest_task() -> None:
 
 @app.task(name="worker.tasks.generate_daily_digest_task")
 def generate_daily_digest_task() -> None:
-    run_task(generate_daily_digest())
+    run_task(_generate_daily_digest_and_broadcast_async())
 
 
 @app.task(name="worker.tasks.process_post")

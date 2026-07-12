@@ -156,13 +156,32 @@
       background: var(--bg-elevated);
       border: 1px solid var(--border);
       color: var(--text);
-      padding: 10px 16px;
+      padding: 10px 40px 10px 16px;
       border-radius: var(--radius-pill);
       font: inherit;
       font-size: 13px;
     }
     .header-search input[type="text"]:focus { outline: none; border-color: var(--border-strong); }
     .header-search input[type="text"]::placeholder { color: var(--text-faint); }
+    .header-search-submit {
+      position: absolute;
+      top: 50%;
+      right: 6px;
+      transform: translateY(-50%);
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      border: none;
+      background: var(--accent);
+      color: var(--ink);
+      font-size: 14px;
+      line-height: 1;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .header-search-submit:hover { background: var(--accent-active); }
     .header-search .htmx-indicator { position: absolute; top: calc(100% + 4px); left: 16px; }
     .header-search-results {
       position: absolute;
@@ -299,7 +318,7 @@
     .data-table td { padding: 14px 16px; border-bottom: 1px solid var(--border); vertical-align: top; font-size: 13px; }
     .data-table tr:last-child td { border-bottom: none; }
     .data-table tr:hover td { background: var(--ghost); }
-    .data-table .col-title { min-width: 220px; }
+    .data-table .col-title { width: 18%; min-width: 180px; }
     .data-table .col-title a {
       font-family: var(--font-display);
       font-weight: 500;
@@ -309,10 +328,14 @@
       text-underline-offset: 3px;
     }
     .data-table .col-title a:hover { color: var(--accent); text-decoration-color: var(--accent); }
-    .data-table .col-desc { color: var(--text-muted); max-width: 340px; }
-    .data-table .col-tags, .data-table .col-area, .data-table .col-post, .data-table .col-usefulness { white-space: nowrap; }
+    .data-table .col-desc { color: var(--text-muted); width: 100%; }
+    .data-table .col-tags, .data-table .col-area, .data-table .col-priority,
+    .data-table .col-tested, .data-table .col-date, .data-table .col-post,
+    .data-table .col-usefulness { white-space: nowrap; }
     .data-table .col-actions { white-space: nowrap; text-align: right; }
     .data-table .tags { margin: 0; }
+    .data-table .tested-yes { color: var(--green); }
+    .data-table .tested-no { color: var(--text-faint); }
     .post-thumb { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; margin-bottom: 8px; display: block; }
 
     /* --- Usefulness score badge + hover tooltip --- */
@@ -406,9 +429,11 @@
     .edit-form input:focus, .edit-form textarea:focus, .edit-form select:focus { outline: none; border-color: var(--border-strong); }
     .edit-form-actions { display: flex; gap: 8px; margin-top: 4px; }
 
-    .pagination { display: flex; gap: 4px; justify-content: center; margin-top: 16px; }
-    .pagination a { text-decoration: none; color: var(--text-muted); font-family: var(--font-mono); font-size: 12px; padding: 6px 10px; border-radius: var(--radius-sm); }
+    .pagination { display: flex; gap: 12px; align-items: center; justify-content: center; margin-top: 16px; }
+    .pagination a, .pagination-disabled { text-decoration: none; color: var(--text-muted); font-family: var(--font-mono); font-size: 13px; padding: 6px 10px; border-radius: var(--radius-sm); }
     .pagination a:hover { color: var(--text); background: var(--ghost); }
+    .pagination-disabled { color: var(--text-faint); }
+    .pagination-current { font-family: var(--font-mono); font-size: 12px; color: var(--text-faint); }
 
     .htmx-indicator { opacity: 0; transition: opacity 150ms ease-in; font-family: var(--font-mono); font-size: 11px; color: var(--text-faint); align-self: center; }
     .htmx-request .htmx-indicator, .htmx-request.htmx-indicator { opacity: 1; }
@@ -450,6 +475,7 @@
         <input type="text" name="question" placeholder="Search links &amp; posts…"
                hx-post="/ask" hx-trigger="keyup[key=='Enter']" hx-target="#header-search-results"
                hx-swap="innerHTML" hx-indicator="#header-search-loading">
+        <button type="submit" class="header-search-submit" aria-label="Search">→</button>
       </form>
       <span id="header-search-loading" class="htmx-indicator">Searching…</span>
       <div id="header-search-results" class="header-search-results"></div>

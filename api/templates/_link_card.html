@@ -3,10 +3,7 @@
   <td class="col-title">
     <a href="/links/{{ link.id }}/visit" target="_blank" rel="noopener">{{ link.title or link.url }}</a>
     {% if link.click_count >= 3 %}<span class="badge">Popular</span>{% endif %}
-    <div class="row-meta">
-      {{ link.domain or '' }} · {{ link.created_at.strftime('%b %d, %Y') }}
-      {% if link.click_count > 0 %}· <span class="click-count">{{ link.click_count }} {{ clicks_label(link.click_count) }}</span>{% endif %}
-    </div>
+    <div class="row-meta">{{ link.domain or '' }}</div>
   </td>
   <td class="col-desc">{{ link.description or '' }}</td>
   <td class="col-tags">
@@ -17,13 +14,16 @@
   <td class="col-area">
     {% if link.area %}<span class="tag" style="--tag-color: var({{ area_color(link.area) }});">{{ link.area }}</span>{% endif %}
   </td>
+  <td class="col-priority">
+    {% set priority_color = {"low": "--peach", "normal": "--text-faint", "high": "--green"}[link.manual_priority.value] %}
+    <span class="tag" style="--tag-color: var({{ priority_color }});">{{ link.manual_priority.value|capitalize }}</span>
+  </td>
+  <td class="col-tested">
+    {% if link.is_tested %}<span class="tested-yes">✓ Tested</span>{% else %}<span class="tested-no">—</span>{% endif %}
+  </td>
+  <td class="col-date">{{ link.created_at.strftime('%b %d, %Y') }}</td>
   <td class="col-post">
     {% if post %}<a class="btn" href="{{ post.post_url }}" target="_blank" rel="noopener">Post</a>{% endif %}
-  </td>
-  <td class="col-actions">
-    <a class="btn" href="/links/{{ link.id }}">View</a>
-    <button class="btn" hx-get="/links/{{ link.id }}/edit-form" hx-target="#link-{{ link.id }}" hx-swap="outerHTML">Edit</button>
-    <button class="btn" hx-patch="/api/links/{{ link.id }}/hide?hidden=true" hx-target="#link-{{ link.id }}" hx-swap="outerHTML">Hide</button>
   </td>
   <td class="col-usefulness">
     {% if link.usefulness_score is not none %}
@@ -36,5 +36,10 @@
         </span>
       </span>
     {% endif %}
+  </td>
+  <td class="col-actions">
+    <a class="btn" href="/links/{{ link.id }}">View</a>
+    <button class="btn" hx-get="/links/{{ link.id }}/edit-form" hx-target="#link-{{ link.id }}" hx-swap="outerHTML">Edit</button>
+    <button class="btn" hx-patch="/api/links/{{ link.id }}/hide?hidden=true" hx-target="#link-{{ link.id }}" hx-swap="outerHTML">Hide</button>
   </td>
 </tr>

@@ -10,12 +10,33 @@ class ChangelogEntry:
     summary: list[str]
 
 
-CURRENT_VERSION = "1.5.0"
+CURRENT_VERSION = "1.6.0"
 
 # date: "YYYY-MM-DD HH:MM" — несколько релизов за день не редкость, время
 # нужно, чтобы порядок и дата были действительно проверяемы (см. git log),
 # а не проставлены на глаз задним числом.
 CHANGELOG: list[ChangelogEntry] = [
+    ChangelogEntry(
+        version="1.6.0",
+        date="2026-07-12 14:45",
+        summary=[
+            "Links table reworked: Description is now the widest column, "
+            "Date got its own column, and the click counter was dropped from "
+            "the row — Usefulness moved before Actions so the action buttons "
+            "are always the rightmost column",
+            "Added a manual Priority (Low/Normal/High) and a Tested checkbox "
+            "on every link, editable from the edit form; sort options are "
+            "now Priority/Date/Tested with Date as the default",
+            "Links page got a title and subtitle like Posts; \"+ Add link\" "
+            "now opens leftward so it no longer runs off the page edge; "
+            "pagination switched from a page-number list to arrows + \"Page "
+            "X of Y\"",
+            "The header search box now has a visible submit button — no "
+            "more guessing that Enter is the only way to search",
+            "The daily digest now broadcasts to the team in DM as soon as "
+            "it's generated, the same way the weekly digest already did",
+        ],
+    ),
     ChangelogEntry(
         version="1.5.0",
         date="2026-07-11 22:16",

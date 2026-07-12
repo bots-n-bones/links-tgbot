@@ -38,6 +38,18 @@ class SourceType(str, enum.Enum):
     manual = "manual"  # добавлено вручную через дашборд, не через бота
 
 
+class ManualPriority(str, enum.Enum):
+    """Ручная приоритизация с дашборда — независима от auto-считаемого
+    Link.priority_score (recency-decay формула, см. worker/priority.py),
+    используемого для digest-ранжирования. Порядок объявления важен: в
+    Postgres ENUM сортируется по ordinal position, low < normal < high, так
+    что .desc() в сортировке "By priority" отдаёт high первыми."""
+
+    low = "low"
+    normal = "normal"
+    high = "high"
+
+
 class Link(Base):
     __tablename__ = "links"
 
@@ -66,6 +78,10 @@ class Link(Base):
     priority_score: Mapped[float] = mapped_column(default=0)
     click_count: Mapped[int] = mapped_column(Integer, default=0)  # переходов по ссылке с дашборда
     is_hidden: Mapped[bool] = mapped_column(Boolean, default=False)
+    manual_priority: Mapped[ManualPriority] = mapped_column(
+        Enum(ManualPriority, name="manual_priority"), default=ManualPriority.normal
+    )
+    is_tested: Mapped[bool] = mapped_column(Boolean, default=False)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

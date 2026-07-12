@@ -8,9 +8,12 @@
         <th>Description</th>
         <th>Tags</th>
         <th>Area</th>
+        <th>Priority</th>
+        <th>Tested</th>
+        <th>Date</th>
         <th>Post</th>
-        <th></th>
         <th>Usefulness</th>
+        <th></th>
       </tr>
     </thead>
     <tbody>
@@ -27,11 +30,19 @@
 {% if total > page_size %}
 {% set total_pages = ((total - 1) // page_size) + 1 %}
 <div class="pagination">
-  {% for p in range(1, total_pages + 1) %}
-    <a href="#"
-       hx-get="/partials/links?tag={{ tag or '' }}&area={{ area or '' }}&sort={{ sort }}&page={{ p }}"
-       hx-target="#links-list" hx-swap="outerHTML">{{ p }}{% if p == page %} ●{% endif %}</a>
-  {% endfor %}
+  {% if page > 1 %}
+    <a href="#" hx-get="/partials/links?tag={{ tag or '' }}&area={{ area or '' }}&sort={{ sort }}&page={{ page - 1 }}"
+       hx-target="#links-list" hx-swap="outerHTML">←</a>
+  {% else %}
+    <span class="pagination-disabled">←</span>
+  {% endif %}
+  <span class="pagination-current">Page {{ page }} of {{ total_pages }}</span>
+  {% if page < total_pages %}
+    <a href="#" hx-get="/partials/links?tag={{ tag or '' }}&area={{ area or '' }}&sort={{ sort }}&page={{ page + 1 }}"
+       hx-target="#links-list" hx-swap="outerHTML">→</a>
+  {% else %}
+    <span class="pagination-disabled">→</span>
+  {% endif %}
 </div>
 {% endif %}
 </div>

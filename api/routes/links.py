@@ -14,7 +14,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.templates_env import templates
-from db.models import Collection, Link, LinkSource, LinkTag, Tag
+from db.models import Collection, Link, LinkSource, LinkTag, ManualPriority, Tag
 from db.session import get_sessionmaker
 from shared.tag_normalizer import normalize_tags
 from worker.llm import normalize_area
@@ -23,8 +23,9 @@ router = APIRouter(prefix="/api/links", tags=["links"])
 
 PAGE_SIZE = 20
 SORT_COLUMNS = {
-    "priority": Link.priority_score.desc(),
+    "priority": Link.manual_priority.desc(),
     "date": Link.created_at.desc(),
+    "tested": Link.is_tested.desc(),
     "count": Link.source_count.desc(),
     "clicks": Link.click_count.desc(),
 }
@@ -54,7 +55,7 @@ async def query_links(
     chat: str | None = None,
     q: str | None = None,
     source_type: str | None = None,
-    sort: str = "priority",
+    sort: str = "date",
     page: int = 1,
     page_size: int = PAGE_SIZE,
 ) -> LinkListResult:
@@ -82,7 +83,7 @@ async def query_links(
             or_(Link.title.ilike(like), Link.description.ilike(like), Link.url.ilike(like))
         )
 
-    order = SORT_COLUMNS.get(sort, SORT_COLUMNS["priority"])
+    order = SORT_COLUMNS.get(sort, SORT_COLUMNS["date"])
     base_stmt = select(Link).where(*conditions)
 
     total = (
@@ -156,6 +157,8 @@ class LinkOut(BaseModel):
     source_count: int
     unique_senders: int
     priority_score: float
+    manual_priority: str
+    is_tested: bool
     click_count: int
     is_hidden: bool
     tags: list[str]
@@ -177,6 +180,8 @@ class LinkOut(BaseModel):
             source_count=link.source_count,
             unique_senders=link.unique_senders,
             priority_score=link.priority_score,
+            manual_priority=link.manual_priority.value,
+            is_tested=link.is_tested,
             click_count=link.click_count,
             is_hidden=link.is_hidden,
             tags=[t.name for t in link.tags],
@@ -189,7 +194,7 @@ async def list_links_api(
     tag: str | None = None,
     chat: str | None = None,
     q: str | None = None,
-    sort: str = "priority",
+    sort: str = "date",
     page: int = 1,
 ):
     sessionmaker = get_sessionmaker()
@@ -231,12 +236,15 @@ async def update_link(
     description: str = Form(""),
     tags: str = Form(""),
     area: str = Form(""),
+    priority: str = Form(""),
+    tested: bool = Form(False),
     view: str = Form("card"),
 ):
-    """Общая функция редактирования записи: заголовок, описание, теги, area —
-    заменяет старый узкоспециализированный PATCH .../tags. view=card|detail
-    определяет, какой HTML-фрагмент вернуть (карточка в списке или блок на
-    странице ссылки) — сам PATCH и модель данных при этом общие."""
+    """Общая функция редактирования записи: заголовок, описание, теги, area,
+    ручной приоритет, отметка "оттестировано" — заменяет старый
+    узкоспециализированный PATCH .../tags. view=card|detail определяет, какой
+    HTML-фрагмент вернуть (карточка в списке или блок на странице ссылки) —
+    сам PATCH и модель данных при этом общие."""
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         link = await session.get(Link, link_id)
@@ -247,6 +255,9 @@ async def update_link(
         link.description = description.strip() or None
         if area:
             link.area = normalize_area(area)
+        if priority in (p.value for p in ManualPriority):
+            link.manual_priority = ManualPriority(priority)
+        link.is_tested = tested
 
         parsed = [t.strip() for t in tags.split(",") if t.strip()]
         normalized = normalize_tags(parsed)
