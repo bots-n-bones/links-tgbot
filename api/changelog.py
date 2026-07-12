@@ -10,12 +10,26 @@ class ChangelogEntry:
     summary: list[str]
 
 
-CURRENT_VERSION = "2.1.1"
+CURRENT_VERSION = "2.1.2"
 
 # date: "YYYY-MM-DD HH:MM" — несколько релизов за день не редкость, время
 # нужно, чтобы порядок и дата были действительно проверяемы (см. git log),
 # а не проставлены на глаз задним числом.
 CHANGELOG: list[ChangelogEntry] = [
+    ChangelogEntry(
+        version="2.1.2",
+        date="2026-07-12 20:10",
+        summary=[
+            "Voice DNA: replaced the single guessed \"confidence\" score with "
+            "two numbers computed directly from the per-post data — style "
+            "consistency and structure consistency",
+            "The report's headline voice description now comes from one "
+            "source instead of two separately-generated ones that could "
+            "quietly disagree",
+            "Report prompts now stop the model from writing that a voice is "
+            "\"undetermined\" when the computed consistency is actually high",
+        ],
+    ),
     ChangelogEntry(
         version="2.1.1",
         date="2026-07-12 18:55",

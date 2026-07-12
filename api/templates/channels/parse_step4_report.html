@@ -37,8 +37,12 @@
     <div class="kpi-label">Date range</div>
   </div>
   <div class="kpi-tile">
-    <div class="kpi-value">{{ ((profile.confidence or 0) * 100) | round | int }}%</div>
-    <div class="kpi-label">Confidence</div>
+    <div class="kpi-value">{{ ((profile.style_consistency or 0) * 100) | round | int }}%</div>
+    <div class="kpi-label">Style consistency</div>
+  </div>
+  <div class="kpi-tile">
+    <div class="kpi-value">{{ ((profile.structure_consistency or 0) * 100) | round | int }}%</div>
+    <div class="kpi-label">Structure consistency</div>
   </div>
 </div>
 

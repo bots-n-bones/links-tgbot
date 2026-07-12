@@ -10,7 +10,12 @@ from db.models import (
     ChannelVoiceReportStatus,
 )
 from worker.stylometry import compute_metrics
-from worker.voice_dna import _merge_radar, analyze_voice_dna, render_report_markdown
+from worker.voice_dna import (
+    _merge_radar,
+    analyze_voice_dna,
+    compute_deterministic_profile_fields,
+    render_report_markdown,
+)
 from worker.voice_dna_charts import build_chart_data
 from worker.voice_dna_models import (
     PostVoiceAnalysis,
@@ -108,13 +113,62 @@ def test_render_report_markdown_includes_key_sections():
     sections = ReportSections()
     sections.summary.tone_of_voice = "Direct and punchy."
     sections.insights.key_insights = ["Insight one"]
-    profile = VoiceDnaProfile(voice_identity="A test channel voice", confidence=0.8)
+    profile = VoiceDnaProfile(
+        voice_identity="A test channel voice", style_consistency=0.8, structure_consistency=0.7
+    )
 
     md = render_report_markdown(sections, {}, profile)
 
     assert "A test channel voice" in md
     assert "Direct and punchy." in md
     assert "- Insight one" in md
+    assert "0.80" in md
+    assert "0.70" in md
+
+
+def test_compute_deterministic_profile_fields_perfectly_consistent():
+    analyses = [
+        PostVoiceAnalysis(
+            post_id=i,
+            register="conversational",
+            punctuation_style="minimal",
+            body_structure="single_block",
+            hook_type="bold_claim",
+            close_type="summary",
+        )
+        for i in range(1, 4)
+    ]
+
+    fields = compute_deterministic_profile_fields(analyses)
+
+    assert fields["style_consistency"] == 1.0
+    assert fields["structure_consistency"] == 1.0
+    assert fields["dominant_template"] == "single_block"
+    assert fields["template_frequency"] == 1.0
+
+
+def test_compute_deterministic_profile_fields_mixed_styles():
+    analyses = [
+        PostVoiceAnalysis(post_id=1, register="conversational", body_structure="single_block"),
+        PostVoiceAnalysis(post_id=2, register="formal", body_structure="single_block"),
+        PostVoiceAnalysis(post_id=3, register="formal", body_structure="bullet_list"),
+    ]
+
+    fields = compute_deterministic_profile_fields(analyses)
+
+    assert fields["dominant_template"] == "single_block"
+    assert fields["template_frequency"] == 2 / 3
+    assert 0.0 < fields["style_consistency"] < 1.0
+
+
+def test_compute_deterministic_profile_fields_empty_input():
+    fields = compute_deterministic_profile_fields([])
+    assert fields == {
+        "style_consistency": 0.0,
+        "structure_consistency": 0.0,
+        "dominant_template": "",
+        "template_frequency": 0.0,
+    }
 
 
 async def test_analyze_voice_dna_creates_report_and_marks_job_done(db_session):
@@ -161,6 +215,22 @@ async def test_analyze_voice_dna_creates_report_and_marks_job_done(db_session):
     assert report.chart_data_json is not None
     assert len(report.post_analyses_json) == 2
     assert report.report_md
+
+    # style_consistency/structure_consistency/dominant_template/template_frequency
+    # are computed in Python from post_analyses, not trusted from the LLM.
+    profile = report.profile_json
+    assert profile["dominant_template"] == "single_block"
+    assert profile["template_frequency"] == 1.0
+    assert profile["style_consistency"] == 1.0
+    assert 0.0 <= profile["structure_consistency"] <= 1.0
+    assert (
+        profile["confidence"]
+        == (profile["style_consistency"] + profile["structure_consistency"]) / 2
+    )
+
+    # single source of truth: the sections call's own voice_identity guess is
+    # discarded in favor of the aggregate profile's.
+    assert report.report_sections_json["summary"]["voice_identity"] == profile["voice_identity"]
 
 
 async def test_analyze_voice_dna_marks_report_failed_when_no_posts(db_session):

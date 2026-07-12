@@ -64,7 +64,12 @@ class UnderTheHood(BaseModel):
 
 
 class VoiceDnaProfile(BaseModel):
+    # confidence/style_consistency/structure_consistency are computed in
+    # Python from post_analyses (see voice_dna.compute_deterministic_profile_fields)
+    # and overwrite whatever the LLM guesses here.
     confidence: float = 0.5
+    style_consistency: float = 0.5
+    structure_consistency: float = 0.5
     voice_identity: str = ""
     dominant_template: str = ""
     template_frequency: float = 0.0

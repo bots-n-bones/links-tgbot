@@ -28,6 +28,8 @@ async def _make_job_with_report(db_session, *, report_status=ChannelVoiceReportS
         post_analyses_json=[],
         profile_json={
             "confidence": 0.82,
+            "style_consistency": 0.75,
+            "structure_consistency": 0.65,
             "dominant_template": "single_block",
             "template_frequency": 0.6,
             "content_pillars": [],
@@ -81,13 +83,14 @@ async def test_report_page_includes_disclaimer(db_session):
     assert "субъективная оценка алгоритма" in resp.text
 
 
-async def test_report_page_kpi_hero_shows_confidence_and_posts_count(db_session):
+async def test_report_page_kpi_hero_shows_consistency_scores_and_posts_count(db_session):
     job, _report = await _make_job_with_report(db_session)
 
     with TestClient(app) as client:
         resp = client.get(f"/channels/parse/{job.id}/report")
 
-    assert "82%" in resp.text
+    assert "75%" in resp.text  # style_consistency
+    assert "65%" in resp.text  # structure_consistency
     assert "250" in resp.text
 
 

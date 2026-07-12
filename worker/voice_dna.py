@@ -7,6 +7,7 @@ worker.tasks.analyze_channel_voice_dna, когда params_json["voice_dna"]=true
 """
 
 import logging
+from collections import Counter
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -50,6 +51,41 @@ async def classify_posts_batch(
     return results
 
 
+def _mode_share(values: list[str]) -> tuple[str, float]:
+    filtered = [v for v in values if v]
+    if not filtered:
+        return "", 0.0
+    counter = Counter(filtered)
+    mode, count = counter.most_common(1)[0]
+    return mode, count / len(filtered)
+
+
+def compute_deterministic_profile_fields(post_analyses: list[PostVoiceAnalysis]) -> dict:
+    """style_consistency/structure_consistency/dominant_template/template_frequency
+    computed from post_analyses instead of guessed by the LLM. Previously the
+    LLM invented a single "confidence" score and a "template_frequency" that
+    regularly contradicted its own generated prose (e.g. writing "the voice
+    profile is undetermined" for a channel whose actual per-post data was
+    highly consistent) — these are measurable, so we measure them."""
+    _, register_share = _mode_share([a.register for a in post_analyses])
+    _, punctuation_share = _mode_share([a.punctuation_style for a in post_analyses])
+    style_consistency = (register_share + punctuation_share) / 2
+
+    dominant_template, template_frequency = _mode_share(
+        [a.body_structure for a in post_analyses]
+    )
+    _, hook_share = _mode_share([a.hook_type for a in post_analyses])
+    _, close_share = _mode_share([a.close_type for a in post_analyses])
+    structure_consistency = (template_frequency + hook_share + close_share) / 3
+
+    return {
+        "style_consistency": style_consistency,
+        "structure_consistency": structure_consistency,
+        "dominant_template": dominant_template,
+        "template_frequency": template_frequency,
+    }
+
+
 def _merge_radar(metrics_radar: dict, profile_radar: dict) -> dict:
     """rhythm/specificity — детерминированные (stylometry.py), остальные 4
     оси — из LLM-агрегации (§6.2 примечание)."""
@@ -69,7 +105,8 @@ def render_report_markdown(
     lines = [
         f"# Voice DNA Report — {profile.voice_identity or 'Untitled channel'}",
         "",
-        f"**Confidence:** {profile.confidence:.2f}",
+        f"**Style consistency:** {profile.style_consistency:.2f}"
+        f"  **Structure consistency:** {profile.structure_consistency:.2f}",
         f"**Dominant template:** {profile.dominant_template} ({profile.template_frequency:.0%})",
         "",
         "## Summary",
@@ -141,16 +178,29 @@ async def analyze_voice_dna(job_id: int) -> None:
         client = get_llm_client()
         metrics: MetricsJson = compute_metrics(posts)
         post_analyses = await classify_posts_batch(posts, model=settings.openai_model_mini)
+        deterministic_fields = compute_deterministic_profile_fields(post_analyses)
+
+        # style_consistency/structure_consistency go into <metrics> (the tag
+        # the prompt is told to never contradict) so the aggregate call's own
+        # prose is grounded in them from the start, not just overridden after.
+        aggregate_metrics = metrics.model_dump()
+        aggregate_metrics["style_consistency"] = deterministic_fields["style_consistency"]
+        aggregate_metrics["structure_consistency"] = deterministic_fields["structure_consistency"]
 
         sample_posts = [p.text or "" for p in posts[: settings.voice_dna_sample_posts]]
         profile = await client.aggregate_voice_profile(
-            metrics=metrics.model_dump(),
+            metrics=aggregate_metrics,
             post_analyses=[a.model_dump() for a in post_analyses],
             sample_posts=sample_posts,
             language=settings.voice_dna_report_language,
             model=settings.openai_model_report,
         )
         profile.radar = _merge_radar(metrics.radar, profile.radar)
+        profile.style_consistency = deterministic_fields["style_consistency"]
+        profile.structure_consistency = deterministic_fields["structure_consistency"]
+        profile.dominant_template = deterministic_fields["dominant_template"]
+        profile.template_frequency = deterministic_fields["template_frequency"]
+        profile.confidence = (profile.style_consistency + profile.structure_consistency) / 2
 
         chart_data = build_chart_data(metrics, post_analyses, profile)
         chart_summary = ", ".join(chart_data.keys())
@@ -162,6 +212,11 @@ async def analyze_voice_dna(job_id: int) -> None:
             language=settings.voice_dna_report_language,
             model=settings.openai_model_report,
         )
+        # profile.voice_identity (aggregate call: full metrics + post_analyses
+        # + sample_posts context) is the single source of truth — the sections
+        # call re-derives its own from a narrower prompt and the two could
+        # otherwise disagree on-screen.
+        sections.summary.voice_identity = profile.voice_identity
         report_md = render_report_markdown(sections, chart_data, profile)
     except Exception:
         logger.exception("Voice DNA analysis failed for job %s", job_id)
