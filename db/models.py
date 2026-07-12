@@ -9,6 +9,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -258,3 +259,117 @@ class QALog(Base):
     matched_link_ids: Mapped[list | None] = mapped_column(JSONB)
     matched_post_ids: Mapped[list | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ChannelParseJobStatus(str, enum.Enum):
+    """Состояния wizard'а Channel Parser (TZ_CHANNELS.md §4.1/§8.2)."""
+
+    pending = "pending"
+    validating = "validating"
+    scraping = "scraping"
+    storing = "storing"
+    analyzing = "analyzing"  # Voice DNA
+    done = "done"
+    failed = "failed"
+
+
+class ChannelVoiceReportStatus(str, enum.Enum):
+    pending = "pending"
+    done = "done"
+    failed = "failed"
+
+
+class ChannelParseJob(Base):
+    """Один запуск парсинга публичного Telegram-канала через t.me/s/{username}
+    (TZ_CHANNELS.md §4.2) — шаги 1-2 wizard'а пишут/читают эту строку."""
+
+    __tablename__ = "channel_parse_jobs"
+    __table_args__ = (
+        Index("ix_channel_parse_jobs_username_created", "channel_username", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    status: Mapped[ChannelParseJobStatus] = mapped_column(
+        Enum(ChannelParseJobStatus, name="channel_parse_job_status"),
+        default=ChannelParseJobStatus.pending,
+    )
+    channel_username: Mapped[str] = mapped_column(String(32), nullable=False)
+    channel_title: Mapped[str | None] = mapped_column(Text)
+    channel_meta_json: Mapped[dict | None] = mapped_column(JSONB)  # avatar, subscribers, ...
+    params_json: Mapped[dict] = mapped_column(JSONB)  # все поля формы шага 1 (TZ §3.2)
+    progress_current: Mapped[int] = mapped_column(Integer, default=0)
+    progress_total: Mapped[int] = mapped_column(Integer, default=0)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    posts_count: Mapped[int] = mapped_column(Integer, default=0)
+    date_range_from: Mapped[date | None] = mapped_column(Date)
+    date_range_to: Mapped[date | None] = mapped_column(Date)
+    avg_views: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    posts: Mapped[list["ChannelParsedPost"]] = relationship(
+        back_populates="job", cascade="all, delete-orphan"
+    )
+    voice_report: Mapped["ChannelVoiceReport | None"] = relationship(
+        back_populates="job", cascade="all, delete-orphan"
+    )
+
+
+class ChannelParsedPost(Base):
+    """Один спарсенный пост канала (TZ_CHANNELS.md §4.3) — отдельная сущность
+    от общей Post/Link pipeline (осознанно не дублируется на MVP, см. TZ §4.3
+    "Связь с posts")."""
+
+    __tablename__ = "channel_parsed_posts"
+    __table_args__ = (UniqueConstraint("job_id", "message_id", name="uq_channel_posts_job_message"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_id: Mapped[int] = mapped_column(
+        ForeignKey("channel_parse_jobs.id", ondelete="CASCADE"), nullable=False
+    )
+    message_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    post_url: Mapped[str] = mapped_column(Text, nullable=False)
+    text: Mapped[str | None] = mapped_column(Text)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    views: Mapped[int | None] = mapped_column(Integer)
+    reactions_json: Mapped[list | None] = mapped_column(JSONB)  # [{"emoji": "👍", "count": 5}, ...]
+    reactions_total: Mapped[int | None] = mapped_column(Integer)
+    comments_count: Mapped[int | None] = mapped_column(Integer)
+    commenters_json: Mapped[list | None] = mapped_column(JSONB)  # best-effort, [] если не собрано
+    is_forward: Mapped[bool] = mapped_column(Boolean, default=False)
+    has_media: Mapped[bool] = mapped_column(Boolean, default=False)
+    word_count: Mapped[int | None] = mapped_column(Integer)
+    urls_in_post: Mapped[list | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    job: Mapped["ChannelParseJob"] = relationship(back_populates="posts")
+
+
+class ChannelVoiceReport(Base):
+    """Voice DNA отчёт по одному job'у — один на job (TZ_CHANNELS.md §4.4).
+    metrics_json — детерминированная стилометрия (worker/stylometry.py),
+    profile_json/report_sections_json — LLM-агрегация (worker/voice_dna.py),
+    chart_data_json — Chart.js-ready данные (worker/voice_dna_charts.py)."""
+
+    __tablename__ = "channel_voice_reports"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_id: Mapped[int] = mapped_column(
+        ForeignKey("channel_parse_jobs.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
+    status: Mapped[ChannelVoiceReportStatus] = mapped_column(
+        Enum(ChannelVoiceReportStatus, name="channel_voice_report_status"),
+        default=ChannelVoiceReportStatus.pending,
+    )
+    metrics_json: Mapped[dict | None] = mapped_column(JSONB)
+    post_analyses_json: Mapped[list | None] = mapped_column(JSONB)
+    profile_json: Mapped[dict | None] = mapped_column(JSONB)
+    chart_data_json: Mapped[dict | None] = mapped_column(JSONB)
+    report_sections_json: Mapped[dict | None] = mapped_column(JSONB)
+    report_md: Mapped[str | None] = mapped_column(Text)
+    confidence: Mapped[float | None] = mapped_column()
+    model: Mapped[str | None] = mapped_column(String(50))
+    tokens_used: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    job: Mapped["ChannelParseJob"] = relationship(back_populates="voice_report")

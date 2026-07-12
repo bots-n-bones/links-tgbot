@@ -33,6 +33,13 @@ class Settings(BaseSettings):
     collection_cron_day: str = "mon"
     collection_cron_hour: int = 9
 
+    # Channel Parser + Voice DNA (see TZ_CHANNELS.md)
+    channel_parse_max_posts: int = 200
+    channel_scrape_delay_sec: float = 1.5
+    voice_dna_report_language: str = "ru"
+    voice_dna_sample_posts: int = 5
+    voice_dna_batch_size: int = 8
+
     env: str = "dev"
 
     @property
