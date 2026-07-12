@@ -10,12 +10,24 @@ class ChangelogEntry:
     summary: list[str]
 
 
-CURRENT_VERSION = "1.7.0"
+CURRENT_VERSION = "1.8.0"
 
 # date: "YYYY-MM-DD HH:MM" — несколько релизов за день не редкость, время
 # нужно, чтобы порядок и дата были действительно проверяемы (см. git log),
 # а не проставлены на глаз задним числом.
 CHANGELOG: list[ChangelogEntry] = [
+    ChangelogEntry(
+        version="1.8.0",
+        date="2026-07-12 13:31",
+        summary=[
+            "New \"Channels\" tab — parse an entire public Telegram channel "
+            "instead of one post at a time: enter a @username, pick a post "
+            "limit and filters, and a background job scrapes the channel's "
+            "public feed",
+            "Live progress page while a channel parses, with a small canvas "
+            "mini-game that races along with the real scrape progress",
+        ],
+    ),
     ChangelogEntry(
         version="1.7.0",
         date="2026-07-12 15:31",
