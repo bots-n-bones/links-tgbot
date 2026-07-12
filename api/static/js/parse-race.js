@@ -54,6 +54,9 @@
       state.finished = true;
       doneCount.textContent = data.posts_count;
       doneActions.style.display = "block";
+      setTimeout(function () {
+        window.location.href = "/channels/parse/" + jobId + "/results";
+      }, 800);
     } else if (data.status === "failed") {
       state.finished = true;
       errorText.textContent = data.error_message || "Unknown error.";

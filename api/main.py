@@ -12,6 +12,7 @@ from sqlalchemy import select, text
 
 from api.changelog import CHANGELOG, CURRENT_VERSION
 from api.export import links_to_csv, links_to_markdown, posts_to_csv, posts_to_markdown
+from api.export_channels import channel_posts_to_csv, channel_posts_to_markdown
 from api.routes import ask, channels as channels_routes, collections, links, posts as posts_routes, research
 from api.routes.links import (
     get_link_detail,
@@ -23,7 +24,16 @@ from api.routes.posts import get_posts_by_link_ids, list_all_post_tags, query_po
 from api.templates_env import templates
 from bot.formatting import format_qa_reply_html, render_markdown_links_html
 from bot.ingest import enqueue_post_processing, enqueue_processing, ingest_message
-from db.models import ChannelParseJob, ChannelParseJobStatus, Collection, Link, Post, ResearchReport, SourceType
+from db.models import (
+    ChannelParseJob,
+    ChannelParseJobStatus,
+    ChannelParsedPost,
+    Collection,
+    Link,
+    Post,
+    ResearchReport,
+    SourceType,
+)
 from db.session import get_sessionmaker
 from shared.config import get_settings
 from worker.channel_scraper import normalize_channel_username
@@ -473,15 +483,68 @@ async def channel_parse_submit(
 
 @app.get("/channels/parse/{job_id}", response_class=HTMLResponse)
 async def channel_parse_progress_page(request: Request, job_id: int):
-    """Шаг 2 — прогресс + мини-игра (TZ_CHANNELS.md §3.3). Таблица результатов
-    (шаг 3) приходит в волне D — пока по status=done показываем итог прямо
-    здесь, без редиректа на ещё не существующий маршрут."""
+    """Шаг 2 — прогресс + мини-игра (TZ_CHANNELS.md §3.3). parse-race.js
+    редиректит на шаг 3 (/results) сам, когда status становится done."""
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         job = await session.get(ChannelParseJob, job_id)
     if job is None:
         return HTMLResponse("Job not found", status_code=404)
     return templates.TemplateResponse(request, "channels/parse_step2.html", {"job": job})
+
+
+CHANNEL_RESULTS_SORT_COLUMNS = {
+    "date": ChannelParsedPost.published_at.desc(),
+    "views": ChannelParsedPost.views.desc(),
+    "reactions": ChannelParsedPost.reactions_total.desc(),
+    "comments": ChannelParsedPost.comments_count.desc(),
+}
+
+
+async def _load_channel_job_and_posts(
+    job_id: int, sort: str
+) -> tuple[ChannelParseJob | None, list[ChannelParsedPost]]:
+    order = CHANNEL_RESULTS_SORT_COLUMNS.get(sort, CHANNEL_RESULTS_SORT_COLUMNS["date"])
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        job = await session.get(ChannelParseJob, job_id)
+        if job is None:
+            return None, []
+        posts = (
+            (
+                await session.execute(
+                    select(ChannelParsedPost)
+                    .where(ChannelParsedPost.job_id == job_id)
+                    .order_by(order)
+                )
+            )
+            .scalars()
+            .all()
+        )
+    return job, list(posts)
+
+
+@app.get("/channels/parse/{job_id}/results", response_class=HTMLResponse)
+async def channel_parse_results_page(request: Request, job_id: int, sort: str = "date"):
+    """Шаг 3 wizard'а — таблица спарсенных постов (TZ_CHANNELS.md §3.4)."""
+    job, posts = await _load_channel_job_and_posts(job_id, sort)
+    if job is None:
+        return HTMLResponse("Job not found", status_code=404)
+    return templates.TemplateResponse(
+        request, "channels/parse_step3.html", {"job": job, "posts": posts, "sort": sort}
+    )
+
+
+@app.get("/channels/parse/{job_id}/export/posts.csv")
+async def export_channel_posts_csv(job_id: int):
+    _job, posts = await _load_channel_job_and_posts(job_id, "date")
+    return _download(channel_posts_to_csv(posts), f"channel-{job_id}-posts.csv", "text/csv")
+
+
+@app.get("/channels/parse/{job_id}/export/posts.md")
+async def export_channel_posts_md(job_id: int):
+    _job, posts = await _load_channel_job_and_posts(job_id, "date")
+    return _download(channel_posts_to_markdown(posts), f"channel-{job_id}-posts.md", "text/markdown")
 
 
 @app.get("/changelog", response_class=HTMLResponse)

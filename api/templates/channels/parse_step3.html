@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}@{{ job.channel_username }} — {{ job.posts_count }} posts — Nova-260{% endblock %}
+{% block content %}
+<div class="eyebrow">Channels</div>
+<h1>@{{ job.channel_username }}</h1>
+<p class="card-meta" style="margin-bottom: 20px;">
+  {{ job.posts_count }} post{{ "s" if job.posts_count != 1 else "" }}
+  {% if job.date_range_from and job.date_range_to %} · {{ job.date_range_from.strftime('%b %d, %Y') }} – {{ job.date_range_to.strftime('%b %d, %Y') }}{% endif %}
+  {% if job.avg_views %} · avg. {{ job.avg_views }} views{% endif %}
+</p>
+
+<div class="panel">
+  <div class="panel-header">
+    <span class="panel-title">Posts</span>
+    <form class="filters" method="get" action="/channels/parse/{{ job.id }}/results">
+      <select name="sort" onchange="this.form.submit()">
+        <option value="date" {% if sort == "date" %}selected{% endif %}>By date</option>
+        <option value="views" {% if sort == "views" %}selected{% endif %}>By views</option>
+        <option value="reactions" {% if sort == "reactions" %}selected{% endif %}>By reactions</option>
+        <option value="comments" {% if sort == "comments" %}selected{% endif %}>By comments</option>
+      </select>
+    </form>
+  </div>
+
+  {% if posts %}
+  <div class="table-scroll">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Preview</th>
+          <th>Views</th>
+          <th>Reactions</th>
+          <th>Comments</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for post in posts %}
+        <tr id="channel-post-{{ post.id }}">
+          <td class="col-title">
+            {{ post.published_at.strftime('%b %d, %Y') if post.published_at else "—" }}
+            {% if post.is_forward %}<div class="row-meta">forwarded</div>{% endif %}
+          </td>
+          <td class="col-desc">{{ post.text or "" }}</td>
+          <td>{{ post.views if post.views is not none else "—" }}</td>
+          <td>{{ post.reactions_total if post.reactions_total is not none else "—" }}</td>
+          <td>{{ post.comments_count if post.comments_count is not none else "—" }}</td>
+          <td class="col-actions">
+            <button class="btn" onclick="document.getElementById('preview-cp-{{ post.id }}').showModal()">Preview post</button>
+            <dialog id="preview-cp-{{ post.id }}" class="preview-dialog">
+              <div class="preview-dialog-header">
+                <span class="panel-title">Post preview</span>
+                <button class="btn" onclick="document.getElementById('preview-cp-{{ post.id }}').close()">Close</button>
+              </div>
+              <iframe src="{{ post.post_url }}?embed=1" class="preview-iframe" loading="lazy"></iframe>
+            </dialog>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="panel-empty">No posts collected.</p>
+  {% endif %}
+</div>
+
+<div style="display: flex; justify-content: flex-end;">
+  <details class="tag-select">
+    <summary>Download all data</summary>
+    <div class="tag-select-menu">
+      <a class="tag-option" href="/channels/parse/{{ job.id }}/export/posts.csv">Download .csv</a>
+      <a class="tag-option" href="/channels/parse/{{ job.id }}/export/posts.md">Download .md</a>
+    </div>
+  </details>
+</div>
+{% endblock %}

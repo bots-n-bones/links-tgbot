@@ -10,12 +10,22 @@ class ChangelogEntry:
     summary: list[str]
 
 
-CURRENT_VERSION = "1.8.0"
+CURRENT_VERSION = "1.9.0"
 
 # date: "YYYY-MM-DD HH:MM" — несколько релизов за день не редкость, время
 # нужно, чтобы порядок и дата были действительно проверяемы (см. git log),
 # а не проставлены на глаз задним числом.
 CHANGELOG: list[ChangelogEntry] = [
+    ChangelogEntry(
+        version="1.9.0",
+        date="2026-07-12 13:44",
+        summary=[
+            "Channel Parser step 3: a results table for every parsed "
+            "channel — date, preview, views, reactions, comments — "
+            "sortable and with a one-click post preview popup",
+            "Download a channel's parsed posts as .csv or .md",
+        ],
+    ),
     ChangelogEntry(
         version="1.8.0",
         date="2026-07-12 13:31",
