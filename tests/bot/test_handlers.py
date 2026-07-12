@@ -142,7 +142,9 @@ async def test_group_handler_keeps_non_telegram_link_alongside_telegram_one(
     assert len(enqueued) == 1
 
 
-# --- Posts capture (F: вкладка Posts, сохраняем каждое сообщение) ---
+# --- Posts capture (вкладка Posts: в группах — только сообщения с внешней
+# ссылкой; форварды в личку сохраняются как есть, см. test_handlers для
+# private.py) ---
 
 
 async def test_group_handler_enqueues_post_with_link_and_delay(db_session, monkeypatch):
@@ -163,7 +165,7 @@ async def test_group_handler_enqueues_post_with_link_and_delay(db_session, monke
     assert countdown == 20  # с задержкой, чтобы ссылка успела обработаться
 
 
-async def test_group_handler_enqueues_post_without_link_immediately(db_session, monkeypatch):
+async def test_group_handler_skips_post_enqueue_without_link(db_session, monkeypatch):
     calls: list[tuple[dict, int]] = []
     monkeypatch.setattr(
         group_module,
@@ -174,10 +176,7 @@ async def test_group_handler_enqueues_post_without_link_immediately(db_session, 
     msg = make_group_message(61, "просто болтовня без ссылок")
     await group_module.handle_group_message(msg)
 
-    assert len(calls) == 1
-    payload, countdown = calls[0]
-    assert payload["urls"] == []
-    assert countdown == 0
+    assert calls == []
 
 
 async def test_group_handler_skips_post_enqueue_for_empty_message(db_session, monkeypatch):
@@ -359,7 +358,9 @@ async def test_private_handler_whitelisted_no_text_routes_to_help_hint(db_sessio
     assert msg.sent == [HELP_HINT_TEXT]
 
 
-def _make_public_channel_origin(message_id: int = 100, username: str = "somechannel"):
+def _make_public_channel_origin(
+    message_id: int = 100, username: str = "somechannel", title: str | None = "Some Channel"
+):
     from datetime import UTC, datetime
 
     from aiogram.types import Chat, MessageOriginChannel
@@ -367,7 +368,7 @@ def _make_public_channel_origin(message_id: int = 100, username: str = "somechan
     return MessageOriginChannel(
         type="channel",
         date=datetime.now(UTC),
-        chat=Chat(id=-1001111111111, type="channel", username=username),
+        chat=Chat(id=-1001111111111, type="channel", username=username, title=title),
         message_id=message_id,
     )
 
@@ -438,6 +439,27 @@ async def test_private_handler_captures_public_channel_forward_with_link(
 
     rows = (await db_session.execute(select(RawMessage))).scalars().all()
     assert len(rows) == 1
+
+
+async def test_private_handler_forward_uses_origin_channel_title_not_dm_title(
+    db_session, monkeypatch
+):
+    # message.chat в личке — это ЛС с ботом (title=None), а не канал; название
+    # канала для колонки Post на дашборде должно браться из forward_origin.
+    calls: list[tuple[dict, int]] = []
+    monkeypatch.setattr(
+        private_module,
+        "enqueue_post_processing",
+        lambda payload, countdown=0: calls.append((payload, countdown)),
+    )
+
+    msg = make_private_message(73, "interesting post", sender_id=WHITELISTED_USER_ID)
+    msg.forward_origin = _make_public_channel_origin(title="Durov's Channel")
+    await private_module.handle_private_message(msg, make_state(WHITELISTED_USER_ID))
+
+    assert len(calls) == 1
+    payload, _countdown = calls[0]
+    assert payload["chat_title"] == "Durov's Channel"
 
 
 async def test_private_handler_ignores_forward_from_private_channel(db_session, monkeypatch):

@@ -10,12 +10,29 @@ class ChangelogEntry:
     summary: list[str]
 
 
-CURRENT_VERSION = "2.1.0"
+CURRENT_VERSION = "2.1.1"
 
 # date: "YYYY-MM-DD HH:MM" — несколько релизов за день не редкость, время
 # нужно, чтобы порядок и дата были действительно проверяемы (см. git log),
 # а не проставлены на глаз задним числом.
 CHANGELOG: list[ChangelogEntry] = [
+    ChangelogEntry(
+        version="2.1.1",
+        date="2026-07-12 18:55",
+        summary=[
+            "Fixed a bug where Voice DNA reports could fail during the "
+            "final write-up step",
+            "Channel Parser progress screen: swapped the mini-game for a "
+            "snake game with a live score, still paced by real scrape "
+            "progress",
+            "Group chats: Posts now only captures messages with an "
+            "external link (forwarded channel posts sent directly to the "
+            "bot are unaffected)",
+            "Posts table: date is now its own column, and the Post column "
+            "always shows the source channel's name — including for "
+            "channel posts forwarded into a DM",
+        ],
+    ),
     ChangelogEntry(
         version="2.1.0",
         date="2026-07-12 17:20",

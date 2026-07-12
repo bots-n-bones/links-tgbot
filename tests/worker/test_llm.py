@@ -1,4 +1,5 @@
 from worker.llm import AREA_CHOICES, UsefulnessScore, normalize_area
+from worker.voice_dna_prompts import VOICE_DNA_AGGREGATE_SYSTEM, VOICE_DNA_SECTIONS_SYSTEM
 
 
 def test_normalize_area_accepts_known_values():
@@ -34,3 +35,20 @@ def test_usefulness_score_clamps_out_of_range_values():
 
 def test_usefulness_score_defaults_to_zero():
     assert UsefulnessScore().total == 0.0
+
+
+def test_voice_dna_sections_prompt_contains_literal_json_braces():
+    # Regression: worker/llm.py used to build this prompt with str.format(),
+    # which crashed on the JSON schema example's own {braces} — a job in
+    # prod failed with KeyError('\n  "summary"') because of this. The
+    # OpenAILLMClient methods must use .replace("{language}", ...) instead.
+    assert '"summary": {' in VOICE_DNA_SECTIONS_SYSTEM
+    with_language_filled = VOICE_DNA_SECTIONS_SYSTEM.replace("{language}", "ru")
+    assert "{language}" not in with_language_filled
+    assert "Output language: ru" in with_language_filled
+
+
+def test_voice_dna_aggregate_prompt_language_substitution():
+    with_language_filled = VOICE_DNA_AGGREGATE_SYSTEM.replace("{language}", "ru")
+    assert "{language}" not in with_language_filled
+    assert "Output language for all prose fields: ru" in with_language_filled

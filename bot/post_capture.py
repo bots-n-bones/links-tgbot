@@ -1,6 +1,6 @@
 """Общая логика захвата постов (F: вкладка Posts) — используется и в
-группах (bot/handlers/group.py, сохраняем всё подряд), и в личке
-(bot/handlers/private.py, только форварды из публичных каналов)."""
+группах (bot/handlers/group.py, только сообщения с внешней ссылкой), и в
+личке (bot/handlers/private.py, только форварды из публичных каналов)."""
 
 from aiogram.types import Message, MessageOriginChannel
 
@@ -24,10 +24,18 @@ def is_public_channel_forward(message: Message) -> bool:
 
 
 def build_post_payload(message: Message, urls: list[str]) -> dict:
+    # Форвард из канала в личку: message.chat — это ЛС с ботом (без title),
+    # реальное имя канала — в forward_origin.chat.title.
+    origin = message.forward_origin
+    chat_title = (
+        origin.chat.title
+        if isinstance(origin, MessageOriginChannel) and origin.chat.title
+        else message.chat.title
+    )
     return {
         "chat_id": message.chat.id,
         "message_id": message.message_id,
-        "chat_title": message.chat.title,
+        "chat_title": chat_title,
         "sender_id": message.from_user.id if message.from_user else None,
         "sender_name": message.from_user.full_name if message.from_user else None,
         "text": message.text or message.caption,

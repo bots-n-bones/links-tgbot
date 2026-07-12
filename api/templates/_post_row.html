@@ -1,9 +1,10 @@
 {% set is_public = "/c/" not in post.post_url %}
 <tr id="post-{{ post.id }}">
   <td class="col-title">
-    <a href="{{ post.post_url }}" target="_blank" rel="noopener">{{ post.chat_title or "Post" }} — {{ post.created_at.strftime('%b %d, %Y') }}</a>
+    <a href="{{ post.post_url }}" target="_blank" rel="noopener">{{ post.chat_title or "Post" }}</a>
     {% if post.link_ids %}<div class="row-meta">{{ post.link_ids|length }} link{{ "s" if post.link_ids|length != 1 else "" }}</div>{% endif %}
   </td>
+  <td class="col-date">{{ post.created_at.strftime('%b %d, %Y') }}</td>
   <td class="col-desc">{{ post.text or post.summary or "" }}</td>
   <td class="col-tags">
     <div class="tags">

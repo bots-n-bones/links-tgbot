@@ -47,9 +47,10 @@ async def handle_group_message(message: Message, bot_username: str = "") -> None
         if is_new:
             enqueue_processing(raw_message.id)
 
-    # F: вкладка Posts — сохраняем каждое сообщение в группе, со ссылками или
-    # без (пользователь явно попросил без фильтра на "осмысленность").
-    if message.text or message.caption or message.photo:
+    # Вкладка Posts из групповых чатов — только сообщения с внешней ссылкой
+    # (форварды из личных сообщений сохраняются как есть без этого условия,
+    # см. bot/handlers/private.py).
+    if urls and (message.text or message.caption or message.photo):
         _enqueue_post(message, urls)
 
     if urls:

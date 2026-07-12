@@ -68,7 +68,7 @@ async def test_posts_page_filters_by_area(db_session):
     assert resp.status_code == 200
     data = resp.text
     # только один пост из двух должен попасть в выдачу
-    assert data.count("Team chat —") == 1
+    assert data.count(">Team chat<") == 1
 
 
 async def test_posts_page_empty_state(db_session):
@@ -94,7 +94,7 @@ async def test_posts_page_filters_by_tag(db_session):
     with TestClient(app) as client:
         resp = client.get("/posts", params={"tag": "dev"})
     assert resp.status_code == 200
-    assert resp.text.count("Team chat —") == 1
+    assert resp.text.count(">Team chat<") == 1
 
 
 async def test_posts_page_sorts_by_priority(db_session):

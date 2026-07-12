@@ -350,7 +350,9 @@ class OpenAILLMClient:
         language: str,
         model: str,
     ) -> VoiceDnaProfile:
-        system_prompt = VOICE_DNA_AGGREGATE_SYSTEM.format(language=language)
+        # .format() would choke on the literal JSON braces in these prompts;
+        # {language} is the only placeholder they actually contain.
+        system_prompt = VOICE_DNA_AGGREGATE_SYSTEM.replace("{language}", language)
         user_prompt = (
             f"<metrics>\n{json.dumps(metrics, ensure_ascii=False)}\n</metrics>\n\n"
             f"<post_analyses>\n{json.dumps(post_analyses, ensure_ascii=False)}"
@@ -386,7 +388,7 @@ class OpenAILLMClient:
     async def generate_report_sections(
         self, *, profile: dict, metrics: dict, chart_summary: str, language: str, model: str
     ) -> ReportSections:
-        system_prompt = VOICE_DNA_SECTIONS_SYSTEM.format(language=language)
+        system_prompt = VOICE_DNA_SECTIONS_SYSTEM.replace("{language}", language)
         user_prompt = (
             f"<profile>\n{json.dumps(profile, ensure_ascii=False)}\n</profile>\n\n"
             f"<metrics>\n{json.dumps(metrics, ensure_ascii=False)}\n</metrics>\n\n"
