@@ -13,6 +13,7 @@ from sqlalchemy import func, select
 
 from bot.extractors import extract_urls
 from db.models import (
+    Collection,
     Link,
     LinkSource,
     LinkStatus,
