@@ -10,12 +10,25 @@ class ChangelogEntry:
     summary: list[str]
 
 
-CURRENT_VERSION = "1.6.0"
+CURRENT_VERSION = "1.6.1"
 
 # date: "YYYY-MM-DD HH:MM" — несколько релизов за день не редкость, время
 # нужно, чтобы порядок и дата были действительно проверяемы (см. git log),
 # а не проставлены на глаз задним числом.
 CHANGELOG: list[ChangelogEntry] = [
+    ChangelogEntry(
+        version="1.6.1",
+        date="2026-07-12 15:09",
+        summary=[
+            "Links table: Description is now exactly 4x wider than Title "
+            "(was barely noticeable), and titles wrap at word boundaries "
+            "instead of butchering mid-word",
+            "Action buttons (View/Edit/Hide) now stack vertically instead "
+            "of running in a row",
+            "Fixed the filter dropdown arrow and the \"+\" in Add link/Add "
+            "post — both were sitting slightly off-center",
+        ],
+    ),
     ChangelogEntry(
         version="1.6.0",
         date="2026-07-12 14:45",

@@ -38,8 +38,10 @@
     {% endif %}
   </td>
   <td class="col-actions">
-    <a class="btn" href="/links/{{ link.id }}">View</a>
-    <button class="btn" hx-get="/links/{{ link.id }}/edit-form" hx-target="#link-{{ link.id }}" hx-swap="outerHTML">Edit</button>
-    <button class="btn" hx-patch="/api/links/{{ link.id }}/hide?hidden=true" hx-target="#link-{{ link.id }}" hx-swap="outerHTML">Hide</button>
+    <div class="col-actions-stack">
+      <a class="btn" href="/links/{{ link.id }}">View</a>
+      <button class="btn" hx-get="/links/{{ link.id }}/edit-form" hx-target="#link-{{ link.id }}" hx-swap="outerHTML">Edit</button>
+      <button class="btn" hx-patch="/api/links/{{ link.id }}/hide?hidden=true" hx-target="#link-{{ link.id }}" hx-swap="outerHTML">Hide</button>
+    </div>
   </td>
 </tr>
