@@ -43,8 +43,8 @@ async def test_index_page_shows_priority_and_tested_columns(db_session):
     with TestClient(app) as client:
         resp = client.get("/")
     assert resp.status_code == 200
-    assert "High" in resp.text
-    assert "✓ Tested" in resp.text
+    assert 'value="high" selected' in resp.text
+    assert 'class="tested-checkbox" checked' in resp.text
 
 
 async def test_index_page_default_sort_is_date(db_session):

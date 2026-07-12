@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.routes.posts import get_posts_by_link_ids
 from api.templates_env import templates
 from db.models import Collection, Link, LinkSource, LinkTag, ManualPriority, Tag
 from db.session import get_sessionmaker
@@ -26,6 +27,7 @@ SORT_COLUMNS = {
     "priority": Link.manual_priority.desc(),
     "date": Link.created_at.desc(),
     "tested": Link.is_tested.desc(),
+    "usefulness": Link.usefulness_score.desc().nullslast(),
     "count": Link.source_count.desc(),
     "clicks": Link.click_count.desc(),
 }
@@ -115,6 +117,27 @@ async def list_digest_history(
             await session.execute(
                 select(Collection)
                 .where(Collection.theme == theme)
+                .order_by(Collection.created_at.desc())
+                .offset(offset)
+                .limit(limit)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+async def list_digest_history_combined(
+    session: AsyncSession, themes: list[str], *, offset: int = 0, limit: int = 10
+) -> list[Collection]:
+    """Daily+weekly дайджесты в одной вкладке (F) — общая лента обеих тем,
+    отсортированная по дате, тег Daily/Weekly проставляется в шаблоне по
+    collection.theme."""
+    return list(
+        (
+            await session.execute(
+                select(Collection)
+                .where(Collection.theme.in_(themes))
                 .order_by(Collection.created_at.desc())
                 .offset(offset)
                 .limit(limit)
@@ -275,7 +298,56 @@ async def update_link(
 
         if _wants_html(request):
             template_name = "_link_detail_view.html" if view == "detail" else "_link_card.html"
-            return templates.TemplateResponse(request, template_name, {"link": link})
+            posts_by_link = await get_posts_by_link_ids(session, [link.id])
+            return templates.TemplateResponse(
+                request, template_name, {"link": link, "posts_by_link": posts_by_link}
+            )
+        return LinkOut.from_link(link).model_dump(mode="json")
+
+
+@router.patch("/{link_id}/priority")
+async def update_link_priority(link_id: int, request: Request, priority: str = Form(...)):
+    """Inline-редактирование Priority прямо в строке таблицы (select с
+    hx-trigger=change) — трогает только это поле, в отличие от update_link,
+    которому нужна вся форма редактирования целиком."""
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        link = await session.get(Link, link_id)
+        if link is None:
+            raise HTTPException(404, "Link not found")
+        if priority not in (p.value for p in ManualPriority):
+            raise HTTPException(422, "Invalid priority")
+        link.manual_priority = ManualPriority(priority)
+        await session.commit()
+        await session.refresh(link, attribute_names=["tags"])
+
+        if _wants_html(request):
+            posts_by_link = await get_posts_by_link_ids(session, [link.id])
+            return templates.TemplateResponse(
+                request, "_link_card.html", {"link": link, "posts_by_link": posts_by_link}
+            )
+        return LinkOut.from_link(link).model_dump(mode="json")
+
+
+@router.patch("/{link_id}/tested")
+async def update_link_tested(link_id: int, request: Request, tested: bool = Form(False)):
+    """Inline-редактирование Tested прямо в строке таблицы (чекбокс с
+    hx-trigger=change) — снятая галочка не шлёт значение в форме, поэтому
+    default=False корректно отражает "unchecked"."""
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        link = await session.get(Link, link_id)
+        if link is None:
+            raise HTTPException(404, "Link not found")
+        link.is_tested = tested
+        await session.commit()
+        await session.refresh(link, attribute_names=["tags"])
+
+        if _wants_html(request):
+            posts_by_link = await get_posts_by_link_ids(session, [link.id])
+            return templates.TemplateResponse(
+                request, "_link_card.html", {"link": link, "posts_by_link": posts_by_link}
+            )
         return LinkOut.from_link(link).model_dump(mode="json")
 
 

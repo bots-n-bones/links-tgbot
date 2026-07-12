@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Digest — Nova-260{% endblock %}
+{% block content %}
+<div class="eyebrow">Digest</div>
+<h1>Digest</h1>
+<p class="card-meta" style="margin-bottom: 20px;">Top 10 fresh articles from the web, picked by GPT to match the quality bar of what the team recently saved. {{ schedule_note }}</p>
+
+<div class="panel">
+  {% if history %}
+  <div class="row-list">
+    {% for collection in history %}
+      {% set is_daily = collection.theme == "daily-digest" %}
+      <div class="row-item">
+        <div class="row-main">
+          <div class="row-title">
+            <a href="/digest/{{ collection.id }}">
+              {% if is_daily %}
+                {{ collection.created_at.strftime('%b %d, %Y') }}
+              {% else %}
+                {{ collection.period_start.strftime('%b %d') }} – {{ collection.period_end.strftime('%b %d, %Y') }}
+              {% endif %}
+            </a>
+            <span class="tag" style="--tag-color: var({{ '--cyan' if is_daily else '--yellow' }});">{{ "Daily" if is_daily else "Weekly" }}</span>
+            {% if is_today_msk(collection.created_at) %}<span class="badge">Actual</span>{% endif %}
+          </div>
+          <div class="row-meta">{{ (collection.articles or [])|length }} article{{ 's' if (collection.articles or [])|length != 1 else '' }}</div>
+        </div>
+        <div class="row-actions">
+          <a class="btn" href="/digest/{{ collection.id }}">Open</a>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+  {% else %}
+    <p class="panel-empty">No digests yet — the first one will be collected automatically on schedule.</p>
+  {% endif %}
+</div>
+{% endblock %}

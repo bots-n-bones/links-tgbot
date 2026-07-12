@@ -16,14 +16,21 @@
   </td>
   <td class="col-priority">
     {% set priority_color = {"low": "--peach", "normal": "--text-faint", "high": "--green"}[link.manual_priority.value] %}
-    <span class="tag" style="--tag-color: var({{ priority_color }});">{{ link.manual_priority.value|capitalize }}</span>
+    <select class="priority-select" style="--tag-color: var({{ priority_color }});"
+            hx-patch="/api/links/{{ link.id }}/priority" hx-trigger="change" hx-target="#link-{{ link.id }}" hx-swap="outerHTML">
+      {% for choice in ["low", "normal", "high"] %}
+        <option value="{{ choice }}" {% if link.manual_priority.value == choice %}selected{% endif %}>{{ choice|capitalize }}</option>
+      {% endfor %}
+    </select>
   </td>
   <td class="col-tested">
-    {% if link.is_tested %}<span class="tested-yes">✓ Tested</span>{% else %}<span class="tested-no">—</span>{% endif %}
+    <input type="checkbox" class="tested-checkbox" {% if link.is_tested %}checked{% endif %}
+           hx-patch="/api/links/{{ link.id }}/tested" hx-trigger="change" hx-target="#link-{{ link.id }}" hx-swap="outerHTML"
+           name="tested">
   </td>
   <td class="col-date">{{ link.created_at.strftime('%b %d, %Y') }}</td>
   <td class="col-post">
-    {% if post %}<a class="btn" href="{{ post.post_url }}" target="_blank" rel="noopener">Post</a>{% endif %}
+    {% if post %}<a class="btn" href="{{ post.post_url }}" target="_blank" rel="noopener">Post Link</a>{% endif %}
   </td>
   <td class="col-usefulness">
     {% if link.usefulness_score is not none %}

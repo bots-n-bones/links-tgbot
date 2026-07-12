@@ -351,11 +351,20 @@
     .data-table .col-usefulness { white-space: nowrap; }
     /* Links table: колонки заданы через <colgroup> (Description ровно в 4
        раза шире Title), поэтому fixed layout и явный сброс width/min-width
-       у отдельных td, иначе колгруппа конфликтует с процентами выше. */
+       у отдельных td, иначе колгруппа конфликтует с процентами выше. Title
+       обрезается многоточием в одну строку — иначе разные по длине заголовки
+       переносятся на разное число строк и строки таблицы выглядят неровно. */
     .data-table-links { table-layout: fixed; }
-    .data-table-links .col-title { width: auto; min-width: 0; }
+    .data-table-links th { white-space: normal; }
+    .data-table-links .col-title { width: auto; min-width: 0; overflow: hidden; }
     .data-table-links .col-desc { width: auto; }
-    .data-table-links .col-title { white-space: normal; }
+    .data-table-links .col-title a {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .data-table-links .col-title .row-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .data-table-links .col-desc, .data-table-links .col-tags { white-space: normal; overflow-wrap: break-word; }
     .data-table-links .col-actions { text-align: right; }
     .data-table-links .col-actions-stack { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
@@ -363,6 +372,24 @@
     .data-table .tags { margin: 0; }
     .data-table .tested-yes { color: var(--green); }
     .data-table .tested-no { color: var(--text-faint); }
+    /* --- Inline-editable Priority/Tested cells --- */
+    .priority-select {
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      appearance: none;
+      background: transparent
+        url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%23a39c8f' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>")
+        no-repeat right 8px center;
+      border: 1px solid var(--tag-color, var(--border));
+      color: var(--text);
+      padding: 4px 22px 4px 10px;
+      border-radius: var(--radius-pill);
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .priority-select:focus { outline: none; border-color: var(--border-strong); }
+    .tested-checkbox { width: 18px; height: 18px; cursor: pointer; accent-color: var(--green); }
     .post-thumb { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; margin-bottom: 8px; display: block; }
 
     /* --- Usefulness score badge + hover tooltip --- */
@@ -510,8 +537,7 @@
     <nav class="site-nav">
       <a href="/" class="{{ 'active' if request.url.path == '/' else '' }}">Links</a>
       <a href="/posts" class="{{ 'active' if request.url.path.startswith('/posts') else '' }}">Posts</a>
-      <a href="/daily-digest" class="{{ 'active' if request.url.path.startswith('/daily-digest') else '' }}">Daily digest</a>
-      <a href="/weekly-digest" class="{{ 'active' if request.url.path.startswith('/weekly-digest') else '' }}">Weekly digest</a>
+      <a href="/digest" class="{{ 'active' if request.url.path.startswith('/digest') else '' }}">Digest</a>
     </nav>
   </header>
   {% block content %}{% endblock %}

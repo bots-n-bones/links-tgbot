@@ -213,6 +213,64 @@ async def test_update_link_unchecked_checkbox_sets_tested_false(db_session):
     assert resp.json()["is_tested"] is False
 
 
+async def test_inline_update_priority_only_touches_priority(db_session):
+    link = await _make_link(
+        db_session, url="https://a.com", title="A", description="desc", tags=["kept"]
+    )
+
+    with TestClient(app) as client:
+        resp = client.patch(f"/api/links/{link.id}/priority", data={"priority": "high"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["manual_priority"] == "high"
+    assert data["title"] == "A"  # не затронуто
+    assert data["description"] == "desc"  # не затронуто
+    assert data["tags"] == ["kept"]  # не затронуто
+
+
+async def test_inline_update_priority_rejects_invalid_value(db_session):
+    link = await _make_link(db_session, url="https://a.com", title="A")
+
+    with TestClient(app) as client:
+        resp = client.patch(f"/api/links/{link.id}/priority", data={"priority": "urgent"})
+    assert resp.status_code == 422
+
+
+async def test_inline_update_tested_checked(db_session):
+    link = await _make_link(db_session, url="https://a.com", title="A")
+
+    with TestClient(app) as client:
+        resp = client.patch(f"/api/links/{link.id}/tested", data={"tested": "on"})
+    assert resp.status_code == 200
+    assert resp.json()["is_tested"] is True
+
+
+async def test_inline_update_tested_unchecked(db_session):
+    link = await _make_link(db_session, url="https://a.com", title="A")
+    link.is_tested = True
+    await db_session.commit()
+
+    with TestClient(app) as client:
+        resp = client.patch(f"/api/links/{link.id}/tested", data={})
+    assert resp.status_code == 200
+    assert resp.json()["is_tested"] is False
+
+
+async def test_list_links_sort_by_usefulness_descending(db_session):
+    low = await _make_link(db_session, url="https://low.com", title="Low")
+    high = await _make_link(db_session, url="https://high.com", title="High")
+    no_score = await _make_link(db_session, url="https://none.com", title="None")
+    low.usefulness_score = 2.0
+    high.usefulness_score = 9.0
+    no_score.usefulness_score = None
+    await db_session.commit()
+
+    with TestClient(app) as client:
+        resp = client.get("/api/links", params={"sort": "usefulness"})
+    urls = [item["url"] for item in resp.json()["items"]]
+    assert urls == ["https://high.com", "https://low.com", "https://none.com"]
+
+
 async def test_hide_link_excludes_from_default_list(db_session):
     link = await _make_link(db_session, url="https://a.com", title="A")
 
@@ -247,11 +305,11 @@ async def test_daily_digest_page_lists_digest(db_session):
     await db_session.refresh(collection)
 
     with TestClient(app) as client:
-        resp = client.get("/daily-digest")
+        resp = client.get("/digest")
         assert resp.status_code == 200
         assert "1 article" in resp.text
 
-        detail = client.get(f"/daily-digest/{collection.id}")
+        detail = client.get(f"/digest/{collection.id}")
     assert detail.status_code == 200
     assert "Great find" in detail.text
     assert '<a href="https://a.com"' in detail.text

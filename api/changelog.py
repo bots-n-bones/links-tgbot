@@ -10,12 +10,28 @@ class ChangelogEntry:
     summary: list[str]
 
 
-CURRENT_VERSION = "1.6.1"
+CURRENT_VERSION = "1.7.0"
 
 # date: "YYYY-MM-DD HH:MM" — несколько релизов за день не редкость, время
 # нужно, чтобы порядок и дата были действительно проверяемы (см. git log),
 # а не проставлены на глаз задним числом.
 CHANGELOG: list[ChangelogEntry] = [
+    ChangelogEntry(
+        version="1.7.0",
+        date="2026-07-12 15:31",
+        summary=[
+            "Links table: titles now truncate cleanly with an ellipsis "
+            "instead of wrapping to a different number of lines per row — "
+            "rows are finally even",
+            "Priority and Tested are now editable right in the table — a "
+            "dropdown and a checkbox that save instantly, no need to open "
+            "Edit; \"Post\" column renamed to \"Post Link\"",
+            "Added a \"By usefulness\" sort (highest first)",
+            "Daily digest and Weekly digest merged into one \"Digest\" tab — "
+            "a single feed tagged Daily/Weekly per entry instead of two "
+            "separate pages; old links redirect automatically",
+        ],
+    ),
     ChangelogEntry(
         version="1.6.1",
         date="2026-07-12 15:09",

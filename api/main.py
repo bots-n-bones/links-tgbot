@@ -13,7 +13,12 @@ from sqlalchemy import select, text
 from api.changelog import CHANGELOG, CURRENT_VERSION
 from api.export import links_to_csv, links_to_markdown, posts_to_csv, posts_to_markdown
 from api.routes import ask, collections, links, posts as posts_routes, research
-from api.routes.links import get_link_detail, list_all_tags, list_digest_history, query_links
+from api.routes.links import (
+    get_link_detail,
+    list_all_tags,
+    list_digest_history_combined,
+    query_links,
+)
 from api.routes.posts import get_posts_by_link_ids, list_all_post_tags, query_posts
 from api.templates_env import templates
 from bot.formatting import format_qa_reply_html, render_markdown_links_html
@@ -319,61 +324,60 @@ _WEEKDAY_NAMES = {
 }
 
 
-@app.get("/daily-digest", response_class=HTMLResponse)
-async def daily_digest_page(request: Request):
-    """Автоматический ежедневный топ-10 свежих статей (Celery Beat, 12:00 МСК)."""
-    sessionmaker = get_sessionmaker()
-    async with sessionmaker() as session:
-        history = await list_digest_history(session, DAILY_DIGEST_THEME, limit=30)
-
-    return templates.TemplateResponse(
-        request,
-        "daily_digest.html",
-        {"history": history, "is_today_msk": _is_today_msk},
-    )
-
-
-@app.get("/daily-digest/{digest_id}", response_class=HTMLResponse)
-async def daily_digest_detail_page(request: Request, digest_id: int):
-    sessionmaker = get_sessionmaker()
-    async with sessionmaker() as session:
-        collection = await session.get(Collection, digest_id)
-    if collection is None or collection.theme != DAILY_DIGEST_THEME:
-        return HTMLResponse("Digest not found", status_code=404)
-    return templates.TemplateResponse(
-        request, "digest_detail.html", {"collection": collection, "back_href": "/daily-digest"}
-    )
-
-
-@app.get("/weekly-digest", response_class=HTMLResponse)
-async def weekly_digest_page(request: Request):
+@app.get("/digest", response_class=HTMLResponse)
+async def digest_page(request: Request):
+    """Daily (Celery Beat, 12:00 МСК) и weekly (расписание из settings) дайджесты
+    в одной ленте — тег Daily/Weekly проставляется в шаблоне по collection.theme."""
     settings = get_settings()
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
-        history = await list_digest_history(session, WEEKLY_DIGEST_THEME, limit=30)
+        history = await list_digest_history_combined(
+            session, [DAILY_DIGEST_THEME, WEEKLY_DIGEST_THEME], limit=30
+        )
 
     weekday = _WEEKDAY_NAMES.get(settings.collection_cron_day, settings.collection_cron_day)
     schedule_note = (
-        f"New digests are collected every {weekday} at {settings.collection_cron_hour:02d}:00 MSK."
+        f"Daily digests are collected every day at 12:00 MSK, weekly digests every "
+        f"{weekday} at {settings.collection_cron_hour:02d}:00 MSK."
     )
 
     return templates.TemplateResponse(
         request,
-        "weekly_digest.html",
+        "digest.html",
         {"history": history, "schedule_note": schedule_note, "is_today_msk": _is_today_msk},
     )
 
 
-@app.get("/weekly-digest/{digest_id}", response_class=HTMLResponse)
-async def weekly_digest_detail_page(request: Request, digest_id: int):
+@app.get("/digest/{digest_id}", response_class=HTMLResponse)
+async def digest_detail_page(request: Request, digest_id: int):
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         collection = await session.get(Collection, digest_id)
-    if collection is None or collection.theme != WEEKLY_DIGEST_THEME:
+    if collection is None or collection.theme not in (DAILY_DIGEST_THEME, WEEKLY_DIGEST_THEME):
         return HTMLResponse("Digest not found", status_code=404)
     return templates.TemplateResponse(
-        request, "digest_detail.html", {"collection": collection, "back_href": "/weekly-digest"}
+        request, "digest_detail.html", {"collection": collection, "back_href": "/digest"}
     )
+
+
+@app.get("/daily-digest")
+async def daily_digest_redirect():
+    return RedirectResponse("/digest", status_code=301)
+
+
+@app.get("/daily-digest/{digest_id}")
+async def daily_digest_detail_redirect(digest_id: int):
+    return RedirectResponse(f"/digest/{digest_id}", status_code=301)
+
+
+@app.get("/weekly-digest")
+async def weekly_digest_redirect():
+    return RedirectResponse("/digest", status_code=301)
+
+
+@app.get("/weekly-digest/{digest_id}")
+async def weekly_digest_detail_redirect(digest_id: int):
+    return RedirectResponse(f"/digest/{digest_id}", status_code=301)
 
 
 @app.get("/changelog", response_class=HTMLResponse)
