@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 from fastapi import FastAPI, Form, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 
 from api.changelog import CHANGELOG, CURRENT_VERSION
 from api.export import links_to_csv, links_to_markdown, posts_to_csv, posts_to_markdown
@@ -601,6 +601,41 @@ async def export_channel_report_md(job_id: int):
     if job is None or report is None or not report.report_md:
         return HTMLResponse("Report not available", status_code=404)
     return _download(report.report_md, f"channel-{job_id}-voice-dna-report.md", "text/markdown")
+
+
+CHANNEL_HISTORY_PAGE_SIZE = 20
+
+
+@app.get("/channels", response_class=HTMLResponse)
+async def channels_history_page(request: Request, page: int = 1):
+    """История запусков Channel Parser (TZ_CHANNELS.md §9.2)."""
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        total = (
+            await session.execute(select(func.count()).select_from(ChannelParseJob))
+        ).scalar_one()
+        jobs = (
+            (
+                await session.execute(
+                    select(ChannelParseJob)
+                    .order_by(ChannelParseJob.created_at.desc(), ChannelParseJob.id.desc())
+                    .offset((page - 1) * CHANNEL_HISTORY_PAGE_SIZE)
+                    .limit(CHANNEL_HISTORY_PAGE_SIZE)
+                )
+            )
+            .scalars()
+            .all()
+        )
+    return templates.TemplateResponse(
+        request,
+        "channels/index.html",
+        {
+            "jobs": jobs,
+            "total": total,
+            "page": page,
+            "page_size": CHANNEL_HISTORY_PAGE_SIZE,
+        },
+    )
 
 
 @app.get("/changelog", response_class=HTMLResponse)

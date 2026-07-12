@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Channels — Nova-260{% endblock %}
+{% block content %}
+<div class="eyebrow">Channels</div>
+<h1>Channels</h1>
+<p class="card-meta" style="margin-bottom: 20px;">Parse a public Telegram channel and get a Voice DNA style report.</p>
+
+<div class="panel">
+  <div class="panel-header">
+    <span class="panel-title">History</span>
+    <a class="btn btn-primary" href="/channels/parse"><span class="plus-icon">+</span>Parse a channel</a>
+  </div>
+
+  {% if jobs %}
+  <div class="table-scroll">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Channel</th>
+          <th>Status</th>
+          <th>Posts</th>
+          <th>Date</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for job in jobs %}
+        <tr>
+          <td class="col-title">@{{ job.channel_username }}</td>
+          <td>{{ job.status.value }}</td>
+          <td>{{ job.posts_count }}</td>
+          <td>{{ job.created_at.strftime('%b %d, %Y') if job.created_at else "—" }}</td>
+          <td class="col-actions">
+            {% if job.status.value == "done" %}
+              <a class="btn" href="/channels/parse/{{ job.id }}/results">View</a>
+              {% if job.params_json.get("voice_dna") %}
+                <a class="btn" href="/channels/parse/{{ job.id }}/report">Report</a>
+              {% endif %}
+            {% elif job.status.value == "failed" %}
+              <span class="row-meta">{{ job.error_message or "Failed" }}</span>
+            {% else %}
+              <a class="btn" href="/channels/parse/{{ job.id }}">In progress…</a>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="panel-empty">No channels parsed yet.</p>
+  {% endif %}
+
+  {% if total > page_size %}
+  {% set total_pages = ((total - 1) // page_size) + 1 %}
+  <div class="pagination">
+    {% if page > 1 %}
+      <a href="/channels?page={{ page - 1 }}">←</a>
+    {% else %}
+      <span class="pagination-disabled">←</span>
+    {% endif %}
+    <span class="pagination-current">Page {{ page }} of {{ total_pages }}</span>
+    {% if page < total_pages %}
+      <a href="/channels?page={{ page + 1 }}">→</a>
+    {% else %}
+      <span class="pagination-disabled">→</span>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

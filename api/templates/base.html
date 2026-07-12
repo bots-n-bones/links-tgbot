@@ -562,7 +562,7 @@
     <nav class="site-nav">
       <a href="/" class="{{ 'active' if request.url.path == '/' else '' }}">Links</a>
       <a href="/posts" class="{{ 'active' if request.url.path.startswith('/posts') else '' }}">Posts</a>
-      <a href="/channels/parse" class="{{ 'active' if request.url.path.startswith('/channels') else '' }}">Channels</a>
+      <a href="/channels" class="{{ 'active' if request.url.path.startswith('/channels') else '' }}">Channels</a>
       <a href="/digest" class="{{ 'active' if request.url.path.startswith('/digest') else '' }}">Digest</a>
     </nav>
   </header>

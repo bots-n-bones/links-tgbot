@@ -10,12 +10,23 @@ class ChangelogEntry:
     summary: list[str]
 
 
-CURRENT_VERSION = "2.0.0"
+CURRENT_VERSION = "2.1.0"
 
 # date: "YYYY-MM-DD HH:MM" — несколько релизов за день не редкость, время
 # нужно, чтобы порядок и дата были действительно проверяемы (см. git log),
 # а не проставлены на глаз задним числом.
 CHANGELOG: list[ChangelogEntry] = [
+    ChangelogEntry(
+        version="2.1.0",
+        date="2026-07-12 17:20",
+        summary=[
+            "Channels tab now opens on a history page — every channel "
+            "you've parsed, with status, post count, and quick links to "
+            "its results table and Voice DNA report",
+            "Channel Parser is feature-complete: wizard, results table, "
+            "CSV/MD export, and Voice DNA reports all shipped",
+        ],
+    ),
     ChangelogEntry(
         version="2.0.0",
         date="2026-07-12 17:05",
