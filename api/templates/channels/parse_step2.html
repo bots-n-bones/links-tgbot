@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Parsing @{{ job.channel_username }} — Nova-260{% endblock %}
+{% block content %}
+<div class="eyebrow">Channels</div>
+<h1>Parsing @{{ job.channel_username }}</h1>
+<p class="card-meta" style="margin-bottom: 20px;">Sit tight — this usually takes a few seconds to a couple of minutes depending on the post limit.</p>
+
+<div class="card" id="parse-progress-card"
+     data-job-id="{{ job.id }}"
+     data-initial-status="{{ job.status.value }}"
+     data-initial-current="{{ job.progress_current }}"
+     data-initial-total="{{ job.progress_total }}"
+     data-initial-error="{{ job.error_message or '' }}">
+  <p id="parse-status-line" style="font-family: var(--font-mono); font-size: 13px; color: var(--text-muted); margin: 0 0 10px;">
+    Starting…
+  </p>
+  <div class="wizard-progress-bar"><div class="wizard-progress-fill" id="parse-progress-fill" style="width: 0%;"></div></div>
+  <p id="parse-progress-text" class="card-meta" style="margin: 10px 0 0;">0 / {{ job.progress_total or '?' }} posts</p>
+
+  <canvas id="parse-race-canvas" width="600" height="200" style="width: 100%; max-width: 600px; display: block; margin: 20px auto 0; border-radius: var(--radius-md); background: var(--bg-elevated-hover);"></canvas>
+  <p class="card-meta" style="text-align: center; margin: 6px 0 0;">Click or press Space for a boost 🚀</p>
+
+  <div id="parse-done-actions" style="display: none; margin-top: 16px; text-align: center;">
+    <p style="margin: 0 0 10px;">✓ Done — <span id="parse-done-count"></span> posts collected.</p>
+    <a class="btn btn-primary" href="/channels/parse/{{ job.id }}">Refresh</a>
+  </div>
+  <div id="parse-failed-actions" style="display: none; margin-top: 16px; text-align: center;">
+    <p style="margin: 0 0 10px; color: var(--accent);">✗ Failed: <span id="parse-error-text"></span></p>
+    <a class="btn" href="/channels/parse">Try another channel</a>
+  </div>
+</div>
+
+<script src="/static/js/parse-race.js"></script>
+{% endblock %}

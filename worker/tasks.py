@@ -1,9 +1,10 @@
 """Celery app и задачи воркера — ядро пайплайна TZ §4.2-4.4, §6.3."""
 
 import asyncio
+import hashlib
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from types import SimpleNamespace
 
 from aiogram import Bot
@@ -12,7 +13,11 @@ from celery.schedules import crontab
 from sqlalchemy import func, select
 
 from bot.extractors import extract_urls
+from bot.ingest import enqueue_processing, ingest_message
 from db.models import (
+    ChannelParsedPost,
+    ChannelParseJob,
+    ChannelParseJobStatus,
     Collection,
     Link,
     LinkSource,
@@ -27,9 +32,11 @@ from db.models import (
 )
 from db.session import get_engine, get_sessionmaker
 from shared.config import get_settings
+from shared.redact import redact_text
 from shared.tag_normalizer import normalize_tags
 from shared.telegram_throttle import send_message_throttled
 from shared.url_normalizer import normalize_url, url_hash
+from worker.channel_scraper import ChannelScrapeError, ScrapedPost, scrape_channel_posts, validate_channel
 from worker.collections import format_digest_text, generate_daily_digest, generate_weekly_digest
 from worker.embeddings import get_embedding_client
 from worker.fetcher import FetchError, fetch_metadata
@@ -613,3 +620,180 @@ def process_post_task(payload: dict) -> int | None:
     from worker.posts import process_post
 
     return run_task(process_post(payload))
+
+
+# --- Channel Parser (TZ_CHANNELS.md §8) -------------------------------------
+
+
+async def _fail_channel_job(sessionmaker, job_id: int, message: str) -> None:
+    async with sessionmaker() as session:
+        job = await session.get(ChannelParseJob, job_id)
+        if job is None:
+            return
+        job.status = ChannelParseJobStatus.failed
+        job.error_message = message
+        job.finished_at = datetime.now(UTC)
+        await session.commit()
+
+
+def _channel_url_chat_id(channel_username: str) -> int:
+    """Синтетический chat_id для ссылок, найденных парсером канала (collect_urls,
+    TZ §3.2) — тот же приём, что MANUAL_ADD_CHAT_ID/POST_URL_RE в api/main.py,
+    стабильный на канал, чтобы дедуп ссылок между job'ами по одному каналу работал."""
+    digest = hashlib.sha256(f"channel-parser:{channel_username}".encode()).hexdigest()
+    return -int(digest[:12], 16)
+
+
+async def _collect_urls_from_posts(
+    sessionmaker, channel_username: str, posts: list[ScrapedPost]
+) -> None:
+    chat_id = _channel_url_chat_id(channel_username)
+    async with sessionmaker() as session:
+        for post in posts:
+            for url_idx, url in enumerate(post.urls_in_post):
+                # message_id должен быть уникален на (chat_id, url) — комбинируем
+                # реальный message_id поста с позицией ссылки внутри него.
+                synthetic_message_id = post.message_id * 1000 + url_idx
+                raw_message, is_new = await ingest_message(
+                    session,
+                    chat_id=chat_id,
+                    message_id=synthetic_message_id,
+                    sender_id=None,
+                    text=url,
+                    entities_json=None,
+                    source_type=SourceType.manual,
+                )
+                if is_new:
+                    enqueue_processing(raw_message.id)
+
+
+async def _run_channel_parse_job_async(job_id: int) -> None:
+    """State machine pending -> validating -> scraping -> storing ->
+    [analyzing] -> done, failed на любом шаге (TZ §8.2)."""
+    sessionmaker = get_sessionmaker()
+
+    async with sessionmaker() as session:
+        job = await session.get(ChannelParseJob, job_id)
+        if job is None:
+            return
+        username = job.channel_username
+        params = dict(job.params_json or {})
+        limit = int(params.get("post_limit", 50))
+        job.status = ChannelParseJobStatus.validating
+        job.progress_total = limit
+        await session.commit()
+
+    try:
+        preview = await validate_channel(username)
+    except ChannelScrapeError as exc:
+        await _fail_channel_job(sessionmaker, job_id, str(exc))
+        return
+
+    async with sessionmaker() as session:
+        job = await session.get(ChannelParseJob, job_id)
+        job.channel_title = preview.title
+        job.channel_meta_json = {
+            "avatar_url": preview.avatar_url,
+            "subscribers": preview.subscribers,
+        }
+        job.status = ChannelParseJobStatus.scraping
+        await session.commit()
+
+    async def on_progress(current: int, total: int) -> None:
+        async with sessionmaker() as progress_session:
+            progress_job = await progress_session.get(ChannelParseJob, job_id)
+            if progress_job is not None:
+                progress_job.progress_current = current
+                await progress_session.commit()
+
+    try:
+        date_from = date.fromisoformat(params["date_from"]) if params.get("date_from") else None
+        date_to = date.fromisoformat(params["date_to"]) if params.get("date_to") else None
+        posts = await scrape_channel_posts(
+            username,
+            limit=limit,
+            date_from=date_from,
+            date_to=date_to,
+            skip_forwards=bool(params.get("skip_forwards", True)),
+            min_text_length=int(params.get("min_text_length", 0)),
+            text_only=bool(params.get("text_only", False)),
+            on_progress=on_progress,
+        )
+    except Exception as exc:  # noqa: BLE001 — ошибка скрейпинга -> failed job, не падение воркера
+        await _fail_channel_job(sessionmaker, job_id, redact_text(f"scrape failed: {exc}"))
+        return
+
+    async with sessionmaker() as session:
+        job = await session.get(ChannelParseJob, job_id)
+        job.status = ChannelParseJobStatus.storing
+        await session.commit()
+
+        for post in posts:
+            session.add(
+                ChannelParsedPost(
+                    job_id=job.id,
+                    message_id=post.message_id,
+                    post_url=post.post_url,
+                    text=post.text,
+                    published_at=post.published_at,
+                    views=post.views,
+                    reactions_json=post.reactions,
+                    reactions_total=post.reactions_total,
+                    comments_count=post.comments_count,
+                    is_forward=post.is_forward,
+                    has_media=post.has_media,
+                    word_count=post.word_count,
+                    urls_in_post=post.urls_in_post,
+                )
+            )
+
+        job.posts_count = len(posts)
+        job.progress_current = len(posts)
+        views = [p.views for p in posts if p.views is not None]
+        job.avg_views = int(sum(views) / len(views)) if views else None
+        dated = [p.published_at for p in posts if p.published_at is not None]
+        if dated:
+            job.date_range_from = min(dated).date()
+            job.date_range_to = max(dated).date()
+        await session.commit()
+
+    if params.get("collect_urls"):
+        await _collect_urls_from_posts(sessionmaker, username, posts)
+
+    if params.get("voice_dna", True):
+        async with sessionmaker() as session:
+            job = await session.get(ChannelParseJob, job_id)
+            job.status = ChannelParseJobStatus.analyzing
+            await session.commit()
+        analyze_channel_voice_dna.delay(job_id)
+    else:
+        async with sessionmaker() as session:
+            job = await session.get(ChannelParseJob, job_id)
+            job.status = ChannelParseJobStatus.done
+            job.finished_at = datetime.now(UTC)
+            await session.commit()
+
+
+@app.task(name="worker.tasks.run_channel_parse_job")
+def run_channel_parse_job(job_id: int) -> None:
+    run_task(_run_channel_parse_job_async(job_id))
+
+
+async def _analyze_channel_voice_dna_async(job_id: int) -> None:
+    """Voice DNA пайплайн (стилометрия + LLM-агрегация + графики) добавляется
+    в волне F (worker/voice_dna.py — см. TZ_CHANNELS.md §7). Пока просто
+    закрывает job без отчёта, чтобы таблица результатов (волна D) была
+    доступна независимо от готовности Voice DNA."""
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        job = await session.get(ChannelParseJob, job_id)
+        if job is None:
+            return
+        job.status = ChannelParseJobStatus.done
+        job.finished_at = datetime.now(UTC)
+        await session.commit()
+
+
+@app.task(name="worker.tasks.analyze_channel_voice_dna")
+def analyze_channel_voice_dna(job_id: int) -> None:
+    run_task(_analyze_channel_voice_dna_async(job_id))

@@ -392,6 +392,10 @@
     .tested-checkbox { width: 18px; height: 18px; cursor: pointer; accent-color: var(--green); }
     .post-thumb { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; margin-bottom: 8px; display: block; }
 
+    /* --- Channel Parser wizard (TZ_CHANNELS.md) --- */
+    .wizard-progress-bar { width: 100%; height: 10px; border-radius: var(--radius-pill); background: var(--ghost); overflow: hidden; }
+    .wizard-progress-fill { height: 100%; background: var(--accent); border-radius: var(--radius-pill); transition: width 300ms ease; }
+
     /* --- Usefulness score badge + hover tooltip --- */
     .score-badge {
       position: relative;
@@ -537,6 +541,7 @@
     <nav class="site-nav">
       <a href="/" class="{{ 'active' if request.url.path == '/' else '' }}">Links</a>
       <a href="/posts" class="{{ 'active' if request.url.path.startswith('/posts') else '' }}">Posts</a>
+      <a href="/channels/parse" class="{{ 'active' if request.url.path.startswith('/channels') else '' }}">Channels</a>
       <a href="/digest" class="{{ 'active' if request.url.path.startswith('/digest') else '' }}">Digest</a>
     </nav>
   </header>

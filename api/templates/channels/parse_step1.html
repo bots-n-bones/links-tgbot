@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Parse a channel — Nova-260{% endblock %}
+{% block content %}
+<div class="eyebrow">Channels</div>
+<h1>Parse a channel</h1>
+<p class="card-meta" style="margin-bottom: 20px;">Pull posts from a public Telegram channel and, optionally, a Voice DNA style report — no bot admin access needed, just the public @username.</p>
+
+{% if error %}
+  <div class="card" style="border-color: var(--accent); margin-bottom: 16px;">
+    <p style="margin: 0; color: var(--accent);">{{ error }}</p>
+  </div>
+{% endif %}
+
+<div class="card">
+  <form class="edit-form" method="post" action="/channels/parse">
+    <label for="channel_input">Channel</label>
+    <input type="text" id="channel_input" name="channel_input" class="input-field"
+           placeholder="@channel, t.me/channel, or https://t.me/channel" value="{{ form.channel_input }}" required>
+
+    <label for="post_limit">Post limit</label>
+    <select id="post_limit" name="post_limit">
+      {% for choice in [10, 25, 50, 100, 200] %}
+        <option value="{{ choice }}" {% if form.post_limit == choice %}selected{% endif %}>{{ choice }}</option>
+      {% endfor %}
+    </select>
+
+    <label for="date_from">From date (optional)</label>
+    <input type="date" id="date_from" name="date_from" class="input-field" value="{{ form.date_from }}">
+
+    <label for="date_to">To date (optional)</label>
+    <input type="date" id="date_to" name="date_to" class="input-field" value="{{ form.date_to }}">
+
+    <label for="min_text_length">Minimum text length (characters)</label>
+    <input type="number" id="min_text_length" name="min_text_length" class="input-field" min="0" value="{{ form.min_text_length }}">
+
+    <label style="display: flex; align-items: center; gap: 8px; flex-direction: row;">
+      <input type="checkbox" name="text_only" style="width: auto;" {% if form.text_only %}checked{% endif %}>
+      Text-only posts (exclude media-only posts)
+    </label>
+    <label style="display: flex; align-items: center; gap: 8px; flex-direction: row;">
+      <input type="checkbox" name="skip_forwards" style="width: auto;" {% if form.skip_forwards %}checked{% endif %}>
+      Skip forwarded posts
+    </label>
+    <label style="display: flex; align-items: center; gap: 8px; flex-direction: row;">
+      <input type="checkbox" name="collect_urls" style="width: auto;" {% if form.collect_urls %}checked{% endif %}>
+      Add links found in posts to the main Links table
+    </label>
+    <label style="display: flex; align-items: center; gap: 8px; flex-direction: row;">
+      <input type="checkbox" name="collect_commenters" style="width: auto;" {% if form.collect_commenters %}checked{% endif %}>
+      Try to collect commenter usernames (best-effort, often empty)
+    </label>
+    <label style="display: flex; align-items: center; gap: 8px; flex-direction: row;">
+      <input type="checkbox" name="voice_dna" style="width: auto;" {% if form.voice_dna %}checked{% endif %}>
+      Generate a Voice DNA report after parsing
+    </label>
+
+    <div class="edit-form-actions">
+      <button type="submit" class="btn btn-primary">Start parsing →</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

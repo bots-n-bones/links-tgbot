@@ -12,7 +12,7 @@ from sqlalchemy import select, text
 
 from api.changelog import CHANGELOG, CURRENT_VERSION
 from api.export import links_to_csv, links_to_markdown, posts_to_csv, posts_to_markdown
-from api.routes import ask, collections, links, posts as posts_routes, research
+from api.routes import ask, channels as channels_routes, collections, links, posts as posts_routes, research
 from api.routes.links import (
     get_link_detail,
     list_all_tags,
@@ -23,13 +23,14 @@ from api.routes.posts import get_posts_by_link_ids, list_all_post_tags, query_po
 from api.templates_env import templates
 from bot.formatting import format_qa_reply_html, render_markdown_links_html
 from bot.ingest import enqueue_post_processing, enqueue_processing, ingest_message
-from db.models import Collection, Link, Post, ResearchReport, SourceType
+from db.models import ChannelParseJob, ChannelParseJobStatus, Collection, Link, Post, ResearchReport, SourceType
 from db.session import get_sessionmaker
 from shared.config import get_settings
+from worker.channel_scraper import normalize_channel_username
 from worker.collections import DAILY_DIGEST_THEME, WEEKLY_DIGEST_THEME
 from worker.fetcher import FetchError, fetch_metadata
 from worker.rag import answer_question
-from worker.tasks import add_research_links, generate_research_report
+from worker.tasks import add_research_links, generate_research_report, run_channel_parse_job
 
 MANUAL_ADD_CHAT_ID = 0  # синтетический chat_id для ссылок, добавленных вручную с дашборда
 
@@ -41,6 +42,7 @@ app.include_router(posts_routes.router)
 app.include_router(collections.router)
 app.include_router(research.router)
 app.include_router(ask.router)
+app.include_router(channels_routes.router)
 
 
 @app.get("/health")
@@ -378,6 +380,108 @@ async def weekly_digest_redirect():
 @app.get("/weekly-digest/{digest_id}")
 async def weekly_digest_detail_redirect(digest_id: int):
     return RedirectResponse(f"/digest/{digest_id}", status_code=301)
+
+
+_CHANNEL_PARSE_FORM_DEFAULTS = {
+    "channel_input": "",
+    "post_limit": 50,
+    "date_from": "",
+    "date_to": "",
+    "text_only": False,
+    "skip_forwards": True,
+    "min_text_length": 0,
+    "collect_urls": False,
+    "collect_commenters": False,
+    "voice_dna": True,
+}
+
+
+@app.get("/channels/parse", response_class=HTMLResponse)
+async def channel_parse_form(request: Request):
+    """Шаг 1 wizard'а Channel Parser (TZ_CHANNELS.md §3.2)."""
+    return templates.TemplateResponse(
+        request, "channels/parse_step1.html", {"error": None, "form": _CHANNEL_PARSE_FORM_DEFAULTS}
+    )
+
+
+@app.post("/channels/parse", response_class=HTMLResponse)
+async def channel_parse_submit(
+    request: Request,
+    channel_input: str = Form(...),
+    post_limit: int = Form(50),
+    date_from: str = Form(""),
+    date_to: str = Form(""),
+    text_only: bool = Form(False),
+    skip_forwards: bool = Form(True),
+    min_text_length: int = Form(0),
+    collect_urls: bool = Form(False),
+    collect_commenters: bool = Form(False),
+    voice_dna: bool = Form(True),
+):
+    """Валидация формата (F-71) — идёт синхронно, без сети; существование
+    канала на t.me проверяется асинхронно внутри run_channel_parse_job
+    (статус validating), не здесь."""
+    form_state = {
+        "channel_input": channel_input,
+        "post_limit": post_limit,
+        "date_from": date_from,
+        "date_to": date_to,
+        "text_only": text_only,
+        "skip_forwards": skip_forwards,
+        "min_text_length": min_text_length,
+        "collect_urls": collect_urls,
+        "collect_commenters": collect_commenters,
+        "voice_dna": voice_dna,
+    }
+
+    username = normalize_channel_username(channel_input)
+    if username is None:
+        return templates.TemplateResponse(
+            request,
+            "channels/parse_step1.html",
+            {
+                "error": "Enter a valid public channel: @channel, t.me/channel, or the full URL.",
+                "form": form_state,
+            },
+        )
+
+    settings = get_settings()
+    clamped_limit = min(max(post_limit, 1), settings.channel_parse_max_posts)
+
+    params = {
+        "post_limit": clamped_limit,
+        "date_from": date_from or None,
+        "date_to": date_to or None,
+        "text_only": text_only,
+        "skip_forwards": skip_forwards,
+        "min_text_length": min_text_length,
+        "collect_urls": collect_urls,
+        "collect_commenters": collect_commenters,
+        "voice_dna": voice_dna,
+    }
+
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        job = ChannelParseJob(channel_username=username, params_json=params)
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+
+    run_channel_parse_job.delay(job.id)
+    return RedirectResponse(f"/channels/parse/{job.id}", status_code=303)
+
+
+@app.get("/channels/parse/{job_id}", response_class=HTMLResponse)
+async def channel_parse_progress_page(request: Request, job_id: int):
+    """Шаг 2 — прогресс + мини-игра (TZ_CHANNELS.md §3.3). Таблица результатов
+    (шаг 3) приходит в волне D — пока по status=done показываем итог прямо
+    здесь, без редиректа на ещё не существующий маршрут."""
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        job = await session.get(ChannelParseJob, job_id)
+    if job is None:
+        return HTMLResponse("Job not found", status_code=404)
+    return templates.TemplateResponse(request, "channels/parse_step2.html", {"job": job})
 
 
 @app.get("/changelog", response_class=HTMLResponse)

@@ -217,7 +217,7 @@ async def scrape_channel_posts(
     skip_forwards: bool = True,
     min_text_length: int = 0,
     text_only: bool = False,
-    on_progress: Callable[[int, int], None] | None = None,
+    on_progress: Callable[[int, int], object] | None = None,
 ) -> list[ScrapedPost]:
     """Пагинация через ?before={message_id} (TZ §5.2). Останов: достигнут
     limit ИЛИ дата < date_from ИЛИ 3 пустые страницы подряд ИЛИ пагинация не
@@ -264,7 +264,9 @@ async def scrape_channel_posts(
                 empty_pages = 0
                 collected.extend(page_posts)
                 if on_progress:
-                    on_progress(min(len(collected), limit), limit)
+                    result = on_progress(min(len(collected), limit), limit)
+                    if asyncio.iscoroutine(result):
+                        await result
             else:
                 empty_pages += 1
                 if empty_pages >= EMPTY_PAGE_STOP_LIMIT:
