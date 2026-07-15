@@ -9,11 +9,12 @@ from fastapi import FastAPI, Form, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select, text
+from starlette.middleware.sessions import SessionMiddleware
 
 from api.changelog import CHANGELOG, CURRENT_VERSION
 from api.export import links_to_csv, links_to_markdown, posts_to_csv, posts_to_markdown
 from api.export_channels import channel_posts_to_csv, channel_posts_to_markdown
-from api.routes import ask, collections, links, research
+from api.routes import ask, auth, collections, links, research
 from api.routes import channels as channels_routes
 from api.routes import posts as posts_routes
 from api.routes.links import (
@@ -49,6 +50,7 @@ MANUAL_ADD_CHAT_ID = 0  # синтетический chat_id для ссылок
 
 app = FastAPI(title="Nova-260")
 app.mount("/static", StaticFiles(directory="api/static"), name="static")
+app.add_middleware(SessionMiddleware, secret_key=get_settings().session_secret_key)
 
 app.include_router(links.router)
 app.include_router(posts_routes.router)
@@ -56,6 +58,7 @@ app.include_router(collections.router)
 app.include_router(research.router)
 app.include_router(ask.router)
 app.include_router(channels_routes.router)
+app.include_router(auth.router)
 
 
 @app.get("/health")

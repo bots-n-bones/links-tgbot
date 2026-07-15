@@ -8,6 +8,10 @@ class Settings(BaseSettings):
 
     # Telegram
     bot_token: str = ""
+    # Публичный @username бота (без @) — нужен дашборду для Telegram Login
+    # Widget (data-telegram-login); сам бот получает его динамически через
+    # bot.get_me() (bot/main.py), но у дашборд-процесса нет live-подключения.
+    bot_username: str = ""
     allowed_user_ids: str = ""  # comma-separated telegram_id list, see allowed_user_id_list
     admin_user_id: str = ""  # telegram_id, see admin_user_id_int
     run_mode: str = "polling"  # polling | webhook
@@ -27,6 +31,9 @@ class Settings(BaseSettings):
     dashboard_url: str = "http://localhost:8000"
     basic_auth_user: str = "admin"
     basic_auth_pass: str = ""
+    # Подписывает cookie-сессию (SessionMiddleware) — личный кабинет, см. план
+    # "Личный кабинет + workspace". Сгенерировать один раз: secrets.token_hex(32).
+    session_secret_key: str = "dev-insecure-session-secret-change-me"
 
     # Schedule
     batch_cron_hours: str = "8,20"

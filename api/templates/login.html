@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Log in — Nova-260{% endblock %}
+{% block content %}
+<div class="eyebrow">Account</div>
+<h1>Log in</h1>
+<p class="card-meta" style="margin-bottom: 20px;">Sign in with the same Telegram account you use with the bot.</p>
+
+<div class="card" style="max-width: 360px;">
+  {% if bot_username %}
+    <script
+      async
+      src="https://telegram.org/js/telegram-widget.js?22"
+      data-telegram-login="{{ bot_username }}"
+      data-size="large"
+      data-auth-url="/login/callback"
+      data-request-access="write">
+    </script>
+  {% else %}
+    <p class="card-meta">BOT_USERNAME is not configured — the login widget can't render.</p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -10,12 +10,22 @@ class ChangelogEntry:
     summary: list[str]
 
 
-CURRENT_VERSION = "2.1.2"
+CURRENT_VERSION = "2.2.0"
 
 # date: "YYYY-MM-DD HH:MM" — несколько релизов за день не редкость, время
 # нужно, чтобы порядок и дата были действительно проверяемы (см. git log),
 # а не проставлены на глаз задним числом.
 CHANGELOG: list[ChangelogEntry] = [
+    ChangelogEntry(
+        version="2.2.0",
+        date="2026-07-13 09:30",
+        summary=[
+            "You can now log in with your Telegram account (same login "
+            "widget style you'd expect from Telegram) — the dashboard "
+            "still shows the same shared data as before, this just adds "
+            "the ability to know who's who",
+        ],
+    ),
     ChangelogEntry(
         version="2.1.2",
         date="2026-07-12 20:10",

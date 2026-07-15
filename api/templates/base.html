@@ -140,6 +140,10 @@
     .site-nav a.active { background: var(--text); color: var(--ink); }
     .site-nav a.active:hover { color: var(--ink); }
 
+    .site-auth { display: flex; align-items: center; gap: 8px; margin-left: 16px; }
+    .site-auth a { font-size: 13px; color: var(--text-muted); text-decoration: none; }
+    .site-auth a:hover, .site-auth a.active { color: var(--text); }
+
     .eyebrow {
       font-family: var(--font-mono);
       font-size: 11px;
@@ -565,6 +569,16 @@
       <a href="/channels" class="{{ 'active' if request.url.path.startswith('/channels') else '' }}">Channels</a>
       <a href="/digest" class="{{ 'active' if request.url.path.startswith('/digest') else '' }}">Digest</a>
     </nav>
+    <div class="site-auth">
+      {% if request.session.get("user_id") %}
+        <a href="/account" class="{{ 'active' if request.url.path.startswith('/account') else '' }}">{{ request.session.get("display_name") }}</a>
+        <form method="post" action="/logout" style="display: inline;">
+          <button type="submit" class="btn">Log out</button>
+        </form>
+      {% else %}
+        <a href="/login" class="btn btn-primary">Log in</a>
+      {% endif %}
+    </div>
   </header>
   {% block content %}{% endblock %}
   <footer>
