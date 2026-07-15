@@ -230,6 +230,55 @@ class Collection(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class WorkspaceRole(str, enum.Enum):
+    owner = "owner"
+    member = "member"
+
+
+class Workspace(Base):
+    """Изолированная команда (личный кабинет, план "Личный кабинет + workspace").
+    На MVP у каждого User ровно один Workspace, но модель — join через
+    WorkspaceMember — заранее допускает несколько на будущее."""
+
+    __tablename__ = "workspaces"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    plan: Mapped[str] = mapped_column(String(20), nullable=False, server_default="free")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class User(Base):
+    """Личность, привязанная к Telegram-аккаунту — заводится при первом
+    логине через Telegram Login Widget (shared/telegram_auth.py)."""
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=False)
+    username: Mapped[str | None] = mapped_column(String(100))
+    full_name: Mapped[str | None] = mapped_column(String(200))
+    display_name: Mapped[str | None] = mapped_column(String(100))  # никнейм, если задан явно
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class WorkspaceMember(Base):
+    __tablename__ = "workspace_members"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "user_id", name="uq_workspace_members_workspace_user"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    role: Mapped[WorkspaceRole] = mapped_column(
+        Enum(WorkspaceRole, name="workspace_role"), nullable=False, server_default="member"
+    )
+    joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Invite(Base):
     __tablename__ = "invites"
 
@@ -321,7 +370,9 @@ class ChannelParsedPost(Base):
     "Связь с posts")."""
 
     __tablename__ = "channel_parsed_posts"
-    __table_args__ = (UniqueConstraint("job_id", "message_id", name="uq_channel_posts_job_message"),)
+    __table_args__ = (
+        UniqueConstraint("job_id", "message_id", name="uq_channel_posts_job_message"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     job_id: Mapped[int] = mapped_column(
