@@ -7,7 +7,12 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy import func, select
 
 from api.routes.links import query_links
-from bot.access import create_invite, require_authorized, require_authorized_callback
+from bot.access import (
+    create_invite,
+    get_owned_workspace_id,
+    require_authorized,
+    require_authorized_callback,
+)
 from bot.formatting import format_link_list_html, format_qa_reply_html
 from bot.keyboards import (
     CB_ASK,
@@ -120,7 +125,11 @@ async def cmd_invite(message: Message) -> None:
     if user_id != get_settings().admin_user_id_int:
         await message.answer("Эта команда доступна только администратору.")
         return
-    code = await create_invite(created_by=user_id)
+    workspace_id = await get_owned_workspace_id(user_id)
+    if workspace_id is None:
+        await message.answer("У вас нет workspace-владения — обратитесь к разработчику.")
+        return
+    code = await create_invite(created_by=user_id, workspace_id=workspace_id)
     await message.answer(
         f"Инвайт-код: {code}\n\n"
         "Перешлите его новому пользователю — ему нужно написать боту /start "

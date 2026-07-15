@@ -284,6 +284,7 @@ class Invite(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     code: Mapped[str] = mapped_column(String(16), unique=True, nullable=False)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), nullable=False)
     created_by: Mapped[int | None] = mapped_column(BigInteger)
     redeemed_by: Mapped[int | None] = mapped_column(BigInteger)
     redeemed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Account — Nova-260{% endblock %}
+{% block content %}
+<div class="eyebrow">Account</div>
+<h1>Account</h1>
+
+<div class="card" style="max-width: 480px; margin-bottom: 16px;">
+  <p class="card-title">Nickname</p>
+  <form id="nickname-form" style="display: flex; gap: 8px; margin-top: 10px;">
+    <input type="text" id="nickname-input" class="input-field" maxlength="100"
+           value="{{ account_user.display_name or account_user.full_name or account_user.username or '' }}"
+           placeholder="How should we call you?">
+    <button type="submit" class="btn btn-primary">Save</button>
+  </form>
+  <p id="nickname-status" class="card-meta" style="margin: 8px 0 0;"></p>
+</div>
+
+<div class="card" style="max-width: 480px; margin-bottom: 16px;">
+  <p class="card-title">Workspace</p>
+  {% if workspace %}
+    <p class="card-meta" style="margin: 6px 0 12px;">{{ workspace.name }} · {{ workspace.plan }} plan</p>
+    <ul style="margin: 0; padding-left: 18px;">
+      {% for member in members %}
+        <li style="margin-bottom: 4px;">{{ member.display_name }} <span class="card-meta">({{ member.role }})</span></li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="card-meta">You're not a member of any workspace yet.</p>
+  {% endif %}
+</div>
+
+{% if is_owner %}
+<div class="card" style="max-width: 480px; margin-bottom: 16px;">
+  <p class="card-title">Invites</p>
+  <button id="create-invite-btn" class="btn" style="margin-top: 10px;">Create invite code</button>
+  <p id="invite-status" class="card-meta" style="margin: 8px 0 0;"></p>
+  <ul style="margin: 12px 0 0; padding-left: 18px;">
+    {% for invite in invites %}
+      <li style="margin-bottom: 4px;">
+        <code>{{ invite.code }}</code>
+        {% if invite.redeemed_by %}<span class="card-meta">— redeemed</span>{% else %}<span class="card-meta">— pending</span>{% endif %}
+      </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<div class="card" style="max-width: 480px;">
+  <p class="card-title">Subscription</p>
+  <p class="card-meta" style="margin: 6px 0 0;">Coming soon.</p>
+</div>
+
+<script>
+  document.getElementById("nickname-form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var input = document.getElementById("nickname-input");
+    var status = document.getElementById("nickname-status");
+    fetch("/api/account/nickname", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ display_name: input.value }),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function () {
+        status.textContent = "Saved.";
+        location.reload();
+      })
+      .catch(function () { status.textContent = "Failed to save."; });
+  });
+
+  var inviteBtn = document.getElementById("create-invite-btn");
+  if (inviteBtn) {
+    inviteBtn.addEventListener("click", function () {
+      var status = document.getElementById("invite-status");
+      fetch("/api/account/invites", { method: "POST" })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          status.textContent = "Created: " + data.code;
+          location.reload();
+        })
+        .catch(function () { status.textContent = "Failed to create invite."; });
+    });
+  }
+</script>
+{% endblock %}

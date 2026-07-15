@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy import select
 
-from db.models import AuthorizedUser, Invite
+from db.models import AuthorizedUser, Invite, User, WorkspaceMember, WorkspaceRole
 from db.session import get_sessionmaker
 from shared.config import get_settings
 
@@ -83,7 +83,11 @@ async def require_authorized_callback(callback: CallbackQuery) -> bool:
 
 
 async def redeem_invite(user_id: int, code: str) -> bool:
-    """Пытается погасить инвайт-код и выдать доступ. True при успехе."""
+    """Пытается погасить инвайт-код и выдать доступ. True при успехе.
+
+    Заводит WorkspaceMember в workspace инвайта (личный кабинет) — и
+    AuthorizedUser для обратной совместимости с is_whitelisted до волны,
+    где resolve_workspace/whitelist переезжает целиком на WorkspaceMember."""
     normalized = code.strip().upper()
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
@@ -95,14 +99,49 @@ async def redeem_invite(user_id: int, code: str) -> bool:
         invite.redeemed_by = user_id
         invite.redeemed_at = datetime.now(UTC)
         session.add(AuthorizedUser(telegram_id=user_id, invite_code=normalized))
+
+        user = await session.scalar(select(User).where(User.telegram_id == user_id))
+        if user is None:
+            user = User(telegram_id=user_id)
+            session.add(user)
+            await session.flush()
+        existing_membership = await session.scalar(
+            select(WorkspaceMember).where(
+                WorkspaceMember.workspace_id == invite.workspace_id,
+                WorkspaceMember.user_id == user.id,
+            )
+        )
+        if existing_membership is None:
+            session.add(WorkspaceMember(workspace_id=invite.workspace_id, user_id=user.id))
+
         await session.commit()
     return True
 
 
-async def create_invite(created_by: int | None) -> str:
+async def get_owned_workspace_id(telegram_id: int) -> int | None:
+    """Первый workspace, которым владеет этот telegram_id (role=owner).
+
+    Временный однозначный резолвер для /invite, пока волна 5 не научит бота
+    полноценно резолвить workspace по чату/отправителю — на MVP у каждого
+    юзера ровно один workspace, так что "первый" уже однозначен."""
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+        if user is None:
+            return None
+        membership = await session.scalar(
+            select(WorkspaceMember).where(
+                WorkspaceMember.user_id == user.id,
+                WorkspaceMember.role == WorkspaceRole.owner,
+            )
+        )
+        return membership.workspace_id if membership else None
+
+
+async def create_invite(created_by: int | None, workspace_id: int) -> str:
     code = _generate_code()
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
-        session.add(Invite(code=code, created_by=created_by))
+        session.add(Invite(code=code, created_by=created_by, workspace_id=workspace_id))
         await session.commit()
     return code

@@ -14,6 +14,8 @@ from starlette.middleware.sessions import SessionMiddleware
 from api.changelog import CHANGELOG, CURRENT_VERSION
 from api.export import links_to_csv, links_to_markdown, posts_to_csv, posts_to_markdown
 from api.export_channels import channel_posts_to_csv, channel_posts_to_markdown
+from api.deps import get_current_user
+from api.routes import account as account_routes
 from api.routes import ask, auth, collections, links, research
 from api.routes import channels as channels_routes
 from api.routes import posts as posts_routes
@@ -33,10 +35,14 @@ from db.models import (
     ChannelVoiceReport,
     ChannelVoiceReportStatus,
     Collection,
+    Invite,
     Link,
     Post,
     ResearchReport,
     SourceType,
+    User,
+    Workspace,
+    WorkspaceMember,
 )
 from db.session import get_sessionmaker
 from shared.config import get_settings
@@ -59,6 +65,7 @@ app.include_router(research.router)
 app.include_router(ask.router)
 app.include_router(channels_routes.router)
 app.include_router(auth.router)
+app.include_router(account_routes.router)
 
 
 @app.get("/health")
@@ -637,6 +644,61 @@ async def channels_history_page(request: Request, page: int = 1):
             "total": total,
             "page": page,
             "page_size": CHANNEL_HISTORY_PAGE_SIZE,
+        },
+    )
+
+
+@app.get("/account", response_class=HTMLResponse)
+async def account_page(request: Request):
+    user = await get_current_user(request)
+    if user is None:
+        return RedirectResponse("/login")
+
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        membership = await session.scalar(
+            select(WorkspaceMember).where(WorkspaceMember.user_id == user.id)
+        )
+        workspace = await session.get(Workspace, membership.workspace_id) if membership else None
+        members = []
+        invites = []
+        if workspace is not None:
+            rows = (
+                await session.execute(
+                    select(WorkspaceMember, User)
+                    .join(User, User.id == WorkspaceMember.user_id)
+                    .where(WorkspaceMember.workspace_id == workspace.id)
+                )
+            ).all()
+            members = [
+                {
+                    "display_name": u.display_name or u.full_name or u.username or str(u.telegram_id),
+                    "role": m.role.value,
+                }
+                for m, u in rows
+            ]
+            invites = list(
+                (
+                    await session.execute(
+                        select(Invite)
+                        .where(Invite.workspace_id == workspace.id)
+                        .order_by(Invite.created_at.desc())
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+    is_owner = membership is not None and membership.role.value == "owner"
+    return templates.TemplateResponse(
+        request,
+        "account.html",
+        {
+            "account_user": user,
+            "workspace": workspace,
+            "members": members,
+            "invites": invites,
+            "is_owner": is_owner,
         },
     )
 

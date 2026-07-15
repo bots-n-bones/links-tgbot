@@ -10,7 +10,19 @@ import bot.handlers.group as group_module
 import bot.handlers.private as private_module
 from bot.access import INVITE_INVALID_TEXT, INVITE_REDEEMED_TEXT, NO_ACCESS_TEXT, create_invite
 from bot.handlers.private import HELP_HINT_TEXT
-from db.models import Collection, Link, LinkStatus, LinkTag, RawMessage, SourceType, Tag
+from db.models import (
+    Collection,
+    Link,
+    LinkStatus,
+    LinkTag,
+    RawMessage,
+    SourceType,
+    Tag,
+    User,
+    Workspace,
+    WorkspaceMember,
+    WorkspaceRole,
+)
 from tests.bot.conftest import WHITELISTED_USER_ID
 
 
@@ -302,7 +314,11 @@ async def test_private_handler_denies_non_whitelisted(db_session):
 
 
 async def test_private_handler_redeems_valid_invite_code(db_session):
-    code = await create_invite(created_by=WHITELISTED_USER_ID)
+    workspace = Workspace(name="Test workspace")
+    db_session.add(workspace)
+    await db_session.commit()
+    await db_session.refresh(workspace)
+    code = await create_invite(created_by=WHITELISTED_USER_ID, workspace_id=workspace.id)
 
     msg = make_private_message(14, code, sender_id=42)  # не в whitelist
     await private_module.handle_private_message(msg, make_state(42))
@@ -407,9 +423,7 @@ async def test_private_handler_captures_public_channel_forward_without_links(
     assert msg.sent == []  # чистый форвард без ссылок — просто сохранили, без ответа
 
 
-async def test_private_handler_captures_public_channel_forward_with_link(
-    db_session, monkeypatch
-):
+async def test_private_handler_captures_public_channel_forward_with_link(db_session, monkeypatch):
     post_calls: list[tuple[dict, int]] = []
     monkeypatch.setattr(
         private_module,
@@ -508,6 +522,19 @@ async def test_cmd_invite_generates_redeemable_code(db_session, monkeypatch):
     from shared import config as config_module
 
     config_module.get_settings.cache_clear()
+
+    workspace = Workspace(name="Test workspace")
+    db_session.add(workspace)
+    await db_session.commit()
+    await db_session.refresh(workspace)
+    owner = User(telegram_id=777)
+    db_session.add(owner)
+    await db_session.commit()
+    await db_session.refresh(owner)
+    db_session.add(
+        WorkspaceMember(workspace_id=workspace.id, user_id=owner.id, role=WorkspaceRole.owner)
+    )
+    await db_session.commit()
 
     msg = make_private_message(32, "/invite", sender_id=777)
     await commands_module.cmd_invite(msg)
