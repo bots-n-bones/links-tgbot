@@ -511,10 +511,11 @@ async def test_cmd_help_whitelisted():
     assert msg.sent == [commands_module.HELP_TEXT]
 
 
-async def test_cmd_invite_denied_for_non_admin(db_session):
-    msg = make_private_message(31, "/invite", sender_id=WHITELISTED_USER_ID)  # не админ
+async def test_cmd_invite_denied_for_non_owner(db_session):
+    # статически вайтлистнутый, но не владелец ни одного workspace
+    msg = make_private_message(31, "/invite", sender_id=WHITELISTED_USER_ID)
     await commands_module.cmd_invite(msg)
-    assert msg.sent == ["Эта команда доступна только администратору."]
+    assert msg.sent == ["Приглашать новых участников может только владелец workspace."]
 
 
 async def test_cmd_invite_generates_redeemable_code(db_session, monkeypatch):

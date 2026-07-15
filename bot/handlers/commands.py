@@ -10,6 +10,7 @@ from api.routes.links import query_links
 from bot.access import (
     create_invite,
     get_owned_workspace_id,
+    register_chat,
     require_authorized,
     require_authorized_callback,
     resolve_workspace_id,
@@ -27,7 +28,6 @@ from bot.keyboards import (
 from bot.states import MenuState
 from db.models import Link, LinkSource, LinkTag, Tag
 from db.session import get_sessionmaker
-from shared.config import get_settings
 from worker.collections import DAILY_DIGEST_THEME, WEEKLY_DIGEST_THEME, format_digest_text
 from worker.rag import answer_question
 
@@ -124,15 +124,18 @@ async def cmd_help(message: Message) -> None:
 
 @router.message(Command("invite"))
 async def cmd_invite(message: Message) -> None:
-    """Админ-команда: сгенерировать одноразовый инвайт-код для нового
-    пользователя (F-44 self-service вместо ручной правки ALLOWED_USER_IDS)."""
+    """Сгенерировать одноразовый инвайт-код для нового пользователя (F-44
+    self-service вместо ручной правки ALLOWED_USER_IDS) — доступно владельцу
+    (role=owner) любого workspace, не только статическому ADMIN_USER_ID
+    (который остаётся бутстрап-владельцем дефолтного workspace, см. миграцию
+    c1d2e3f4a5b6, и потому тоже проходит эту проверку)."""
     user_id = message.from_user.id if message.from_user else None
-    if user_id != get_settings().admin_user_id_int:
-        await message.answer("Эта команда доступна только администратору.")
+    if user_id is None:
+        await message.answer("Не удалось определить отправителя.")
         return
     workspace_id = await get_owned_workspace_id(user_id)
     if workspace_id is None:
-        await message.answer("У вас нет workspace-владения — обратитесь к разработчику.")
+        await message.answer("Приглашать новых участников может только владелец workspace.")
         return
     code = await create_invite(created_by=user_id, workspace_id=workspace_id)
     await message.answer(
@@ -140,6 +143,27 @@ async def cmd_invite(message: Message) -> None:
         "Перешлите его новому пользователю — ему нужно написать боту /start "
         "и в ответ на просьбу ввести этот код сообщением. Код одноразовый."
     )
+
+
+@router.message(Command("register_chat"))
+async def cmd_register_chat(message: Message) -> None:
+    """Привязывает текущий групповой чат к workspace отправителя (волна 5) —
+    после этого ссылки/посты из чата попадают именно в этот workspace, а не
+    в дефолтный. Доступно только владельцу (role=owner) workspace, и только
+    в группах — в личке этой привязки не существует."""
+    if message.chat.type not in ("group", "supergroup"):
+        await message.answer("Эта команда работает только в групповых чатах.")
+        return
+    user_id = message.from_user.id if message.from_user else None
+    if user_id is None:
+        await message.answer("Не удалось определить отправителя.")
+        return
+    workspace_id = await get_owned_workspace_id(user_id)
+    if workspace_id is None:
+        await message.answer("Привязать чат к workspace может только его владелец.")
+        return
+    await register_chat(workspace_id, message.chat.id)
+    await message.answer("Готово — этот чат привязан к вашему workspace.")
 
 
 @router.message(Command("ask"))

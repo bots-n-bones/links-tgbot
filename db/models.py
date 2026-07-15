@@ -302,6 +302,19 @@ class WorkspaceMember(Base):
     joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class WorkspaceChat(Base):
+    """Групповой чат, привязанный к workspace через бот-команду /register_chat
+    (волна 5 плана "Личный кабинет + workspace") — резолюция workspace для
+    сообщений бота из группы, вместо дефолтного workspace-фоллбэка."""
+
+    __tablename__ = "workspace_chats"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), nullable=False)
+    chat_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=False)
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Invite(Base):
     __tablename__ = "invites"
 

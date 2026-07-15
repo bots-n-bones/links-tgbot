@@ -1,9 +1,12 @@
 """Whitelist + инвайт-коды для личных сообщений (F-44). В группах не
 применяется — чат уже доверенный, добавлен админом вручную (см. решение №1
 в плане). Whitelist держится в двух местах: статический ALLOWED_USER_IDS в
-.env (владелец бота, бутстрап) и таблица authorized_users в БД (все, кто
-погасил инвайт-код) — так новых пользователей можно добавлять без
-редактирования .env и перезапуска бота."""
+.env (владелец бота, бутстрап) и членство в workspace (WorkspaceMember —
+заводится при погашении инвайт-кода) — так новых пользователей можно
+добавлять без редактирования .env и перезапуска бота. До волны 5 личного
+кабинета whitelist проверялся по отдельной таблице authorized_users —
+теперь это WorkspaceMember, единый источник правды и для доступа, и для
+данных дашборда."""
 
 import secrets
 import string
@@ -12,7 +15,7 @@ from datetime import UTC, datetime
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy import select
 
-from db.models import AuthorizedUser, Invite, User, WorkspaceMember, WorkspaceRole
+from db.models import Invite, User, WorkspaceChat, WorkspaceMember, WorkspaceRole
 from db.session import get_sessionmaker
 from shared.config import get_settings
 from shared.workspace import get_default_workspace_id
@@ -46,8 +49,13 @@ async def is_whitelisted(user_id: int | None) -> bool:
         return True
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
-        row = await session.get(AuthorizedUser, user_id)
-    return row is not None
+        user = await session.scalar(select(User).where(User.telegram_id == user_id))
+        if user is None:
+            return False
+        membership = await session.scalar(
+            select(WorkspaceMember).where(WorkspaceMember.user_id == user.id)
+        )
+    return membership is not None
 
 
 async def require_whitelisted(message: Message) -> bool:
@@ -86,9 +94,8 @@ async def require_authorized_callback(callback: CallbackQuery) -> bool:
 async def redeem_invite(user_id: int, code: str) -> bool:
     """Пытается погасить инвайт-код и выдать доступ. True при успехе.
 
-    Заводит WorkspaceMember в workspace инвайта (личный кабинет) — и
-    AuthorizedUser для обратной совместимости с is_whitelisted до волны,
-    где resolve_workspace/whitelist переезжает целиком на WorkspaceMember."""
+    Заводит WorkspaceMember в workspace инвайта — единственный источник
+    правды для is_whitelisted/resolve_workspace_id (личный кабинет)."""
     normalized = code.strip().upper()
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
@@ -99,7 +106,6 @@ async def redeem_invite(user_id: int, code: str) -> bool:
             return False
         invite.redeemed_by = user_id
         invite.redeemed_at = datetime.now(UTC)
-        session.add(AuthorizedUser(telegram_id=user_id, invite_code=normalized))
 
         user = await session.scalar(select(User).where(User.telegram_id == user_id))
         if user is None:
@@ -137,6 +143,44 @@ async def get_owned_workspace_id(telegram_id: int) -> int | None:
             )
         )
         return membership.workspace_id if membership else None
+
+
+async def resolve_group_chat_workspace_id(chat_id: int) -> int | None:
+    """workspace, к которому привязан этот групповой чат через
+    /register_chat (WorkspaceChat) — None, если чат не зарегистрирован."""
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        return await session.scalar(
+            select(WorkspaceChat.workspace_id).where(WorkspaceChat.chat_id == chat_id)
+        )
+
+
+async def resolve_ingest_workspace_id(*, chat_id: int, is_group: bool) -> int:
+    """Единая точка резолюции workspace для приёма сообщений ботом:
+    групповой чат — через WorkspaceChat (chat_id), личка — не отсюда (см.
+    resolve_workspace_id, там резолюция по отправителю). Если групповой чат
+    не зарегистрирован — фоллбэк на дефолтный workspace (прежнее поведение
+    до этой волны)."""
+    if is_group:
+        workspace_id = await resolve_group_chat_workspace_id(chat_id)
+        if workspace_id is not None:
+            return workspace_id
+    return await get_default_workspace_id()
+
+
+async def register_chat(workspace_id: int, chat_id: int) -> None:
+    """Привязывает групповой чат к workspace (/register_chat). Идемпотентно —
+    повторная регистрация того же чата просто обновляет workspace_id."""
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        existing = await session.scalar(
+            select(WorkspaceChat).where(WorkspaceChat.chat_id == chat_id)
+        )
+        if existing is not None:
+            existing.workspace_id = workspace_id
+        else:
+            session.add(WorkspaceChat(workspace_id=workspace_id, chat_id=chat_id))
+        await session.commit()
 
 
 async def resolve_workspace_id(telegram_id: int) -> int:
