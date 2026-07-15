@@ -35,10 +35,11 @@ class FixedLLMClient:
 
 
 async def _make_link_with_source(
-    db_session, *, url, priority, created_days_ago, url_hash, is_hidden=False
+    db_session, workspace_id, *, url, priority, created_days_ago, url_hash, is_hidden=False
 ):
     now = datetime.now(UTC) - timedelta(days=created_days_ago)
     link = Link(
+        workspace_id=workspace_id,
         url=url,
         normalized_url=url,
         url_hash=url_hash,
@@ -58,30 +59,44 @@ async def _make_link_with_source(
     return link
 
 
-async def test_generate_daily_digest_returns_none_without_recent_activity(db_session, monkeypatch):
+async def test_generate_daily_digest_returns_none_without_recent_activity(
+    db_session, workspace_id, monkeypatch
+):
     monkeypatch.setattr(collections_module, "get_search_client", lambda: FixedSearchClient([]))
     monkeypatch.setattr(collections_module, "get_llm_client", lambda: FixedLLMClient([]))
 
-    collection = await collections_module.generate_daily_digest()
+    collection = await collections_module.generate_daily_digest(workspace_id=workspace_id)
     assert collection is None
 
 
-async def test_generate_daily_digest_returns_none_without_search_results(db_session, monkeypatch):
+async def test_generate_daily_digest_returns_none_without_search_results(
+    db_session, workspace_id, monkeypatch
+):
     await _make_link_with_source(
-        db_session, url="https://a.com", priority=5.0, created_days_ago=0, url_hash="h1"
+        db_session,
+        workspace_id,
+        url="https://a.com",
+        priority=5.0,
+        created_days_ago=0,
+        url_hash="h1",
     )
     monkeypatch.setattr(collections_module, "get_search_client", lambda: FixedSearchClient([]))
     monkeypatch.setattr(collections_module, "get_llm_client", lambda: FixedLLMClient([]))
 
-    collection = await collections_module.generate_daily_digest()
+    collection = await collections_module.generate_daily_digest(workspace_id=workspace_id)
     assert collection is None
 
 
 async def test_generate_daily_digest_creates_collection_with_valid_articles(
-    db_session, monkeypatch
+    db_session, workspace_id, monkeypatch
 ):
     await _make_link_with_source(
-        db_session, url="https://a.com", priority=5.0, created_days_ago=0, url_hash="h1"
+        db_session,
+        workspace_id,
+        url="https://a.com",
+        priority=5.0,
+        created_days_ago=0,
+        url_hash="h1",
     )
 
     candidates = [
@@ -100,7 +115,7 @@ async def test_generate_daily_digest_creates_collection_with_valid_articles(
     )
     monkeypatch.setattr(collections_module, "get_llm_client", lambda: fake_llm)
 
-    collection = await collections_module.generate_daily_digest()
+    collection = await collections_module.generate_daily_digest(workspace_id=workspace_id)
 
     assert collection is not None
     assert collection.theme == collections_module.DAILY_DIGEST_THEME
@@ -112,10 +127,11 @@ async def test_generate_daily_digest_creates_collection_with_valid_articles(
 
 
 async def test_generate_daily_digest_excludes_hidden_and_stale_reference_links(
-    db_session, monkeypatch
+    db_session, workspace_id, monkeypatch
 ):
     await _make_link_with_source(
         db_session,
+        workspace_id,
         url="https://hidden.com",
         priority=9.0,
         created_days_ago=0,
@@ -123,7 +139,12 @@ async def test_generate_daily_digest_excludes_hidden_and_stale_reference_links(
         is_hidden=True,
     )
     await _make_link_with_source(
-        db_session, url="https://stale.com", priority=9.0, created_days_ago=30, url_hash="h-stale"
+        db_session,
+        workspace_id,
+        url="https://stale.com",
+        priority=9.0,
+        created_days_ago=30,
+        url_hash="h-stale",
     )
     monkeypatch.setattr(
         collections_module,
@@ -132,13 +153,18 @@ async def test_generate_daily_digest_excludes_hidden_and_stale_reference_links(
     )
     monkeypatch.setattr(collections_module, "get_llm_client", lambda: FixedLLMClient([]))
 
-    collection = await collections_module.generate_daily_digest()
+    collection = await collections_module.generate_daily_digest(workspace_id=workspace_id)
     assert collection is None  # ни одной ссылки с активностью за последние 24ч
 
 
-async def test_generate_daily_digest_caps_at_ten_articles(db_session, monkeypatch):
+async def test_generate_daily_digest_caps_at_ten_articles(db_session, workspace_id, monkeypatch):
     await _make_link_with_source(
-        db_session, url="https://a.com", priority=5.0, created_days_ago=0, url_hash="h1"
+        db_session,
+        workspace_id,
+        url="https://a.com",
+        priority=5.0,
+        created_days_ago=0,
+        url_hash="h1",
     )
     candidates = [
         SearchResult(title=f"F{i}", url=f"https://f{i}.com", snippet="s") for i in range(15)
@@ -151,14 +177,19 @@ async def test_generate_daily_digest_caps_at_ten_articles(db_session, monkeypatc
     ]
     monkeypatch.setattr(collections_module, "get_llm_client", lambda: FixedLLMClient(articles))
 
-    collection = await collections_module.generate_daily_digest()
+    collection = await collections_module.generate_daily_digest(workspace_id=workspace_id)
     assert len(collection.articles) == 10
 
 
-async def test_generate_weekly_digest_uses_seven_day_window(db_session, monkeypatch):
+async def test_generate_weekly_digest_uses_seven_day_window(db_session, workspace_id, monkeypatch):
     # 5 дней назад — не входит в дневное окно (1 день), но входит в недельное (7 дней)
     await _make_link_with_source(
-        db_session, url="https://a.com", priority=5.0, created_days_ago=5, url_hash="h1"
+        db_session,
+        workspace_id,
+        url="https://a.com",
+        priority=5.0,
+        created_days_ago=5,
+        url_hash="h1",
     )
     candidates = [SearchResult(title="Found", url="https://found.com", snippet="s")]
     monkeypatch.setattr(
@@ -172,16 +203,23 @@ async def test_generate_weekly_digest_uses_seven_day_window(db_session, monkeypa
         ),
     )
 
-    collection = await collections_module.generate_weekly_digest()
+    collection = await collections_module.generate_weekly_digest(workspace_id=workspace_id)
     assert collection is not None
     assert collection.theme == collections_module.WEEKLY_DIGEST_THEME
     assert collection.articles[0]["url"] == "https://found.com"
 
 
-async def test_generate_weekly_digest_returns_none_for_daily_only_window(db_session, monkeypatch):
+async def test_generate_weekly_digest_returns_none_for_daily_only_window(
+    db_session, workspace_id, monkeypatch
+):
     # 5 дней назад не входит в дневное окно — daily должен вернуть None
     await _make_link_with_source(
-        db_session, url="https://a.com", priority=5.0, created_days_ago=5, url_hash="h1"
+        db_session,
+        workspace_id,
+        url="https://a.com",
+        priority=5.0,
+        created_days_ago=5,
+        url_hash="h1",
     )
     monkeypatch.setattr(
         collections_module,
@@ -190,7 +228,7 @@ async def test_generate_weekly_digest_returns_none_for_daily_only_window(db_sess
     )
     monkeypatch.setattr(collections_module, "get_llm_client", lambda: FixedLLMClient([]))
 
-    collection = await collections_module.generate_daily_digest()
+    collection = await collections_module.generate_daily_digest(workspace_id=workspace_id)
     assert collection is None
 
 

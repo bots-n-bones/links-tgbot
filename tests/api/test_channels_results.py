@@ -1,13 +1,11 @@
 from datetime import UTC, datetime
 
-from starlette.testclient import TestClient
-
-from api.main import app
 from db.models import ChannelParsedPost, ChannelParseJob
 
 
-async def _make_job_with_posts(db_session) -> ChannelParseJob:
+async def _make_job_with_posts(db_session, workspace_id: int) -> ChannelParseJob:
     job = ChannelParseJob(
+        workspace_id=workspace_id,
         channel_username="testchannel",
         params_json={"post_limit": 10},
         posts_count=2,
@@ -44,37 +42,35 @@ async def _make_job_with_posts(db_session) -> ChannelParseJob:
     return job
 
 
-async def test_results_page_renders_posts(db_session):
-    job = await _make_job_with_posts(db_session)
+async def test_results_page_renders_posts(db_session, workspace_id, authed_client):
+    job = await _make_job_with_posts(db_session, workspace_id)
 
-    with TestClient(app) as client:
-        resp = client.get(f"/channels/parse/{job.id}/results")
+    resp = authed_client.get(f"/channels/parse/{job.id}/results")
 
     assert resp.status_code == 200
     assert "newer, more views" in resp.text
     assert "older, fewer views" in resp.text
 
 
-async def test_results_page_default_sort_is_newest_first(db_session):
-    job = await _make_job_with_posts(db_session)
+async def test_results_page_default_sort_is_newest_first(db_session, workspace_id, authed_client):
+    job = await _make_job_with_posts(db_session, workspace_id)
 
-    with TestClient(app) as client:
-        resp = client.get(f"/channels/parse/{job.id}/results")
+    resp = authed_client.get(f"/channels/parse/{job.id}/results")
 
     assert resp.text.index("newer, more views") < resp.text.index("older, fewer views")
 
 
-async def test_results_page_sort_by_views_ascending_is_not_default(db_session):
-    job = await _make_job_with_posts(db_session)
+async def test_results_page_sort_by_views_ascending_is_not_default(
+    db_session, workspace_id, authed_client
+):
+    job = await _make_job_with_posts(db_session, workspace_id)
 
-    with TestClient(app) as client:
-        resp = client.get(f"/channels/parse/{job.id}/results", params={"sort": "views"})
+    resp = authed_client.get(f"/channels/parse/{job.id}/results", params={"sort": "views"})
 
     # by views desc: the 500-view post should still come first
     assert resp.text.index("newer, more views") < resp.text.index("older, fewer views")
 
 
-async def test_results_page_404_for_missing_job(db_session):
-    with TestClient(app) as client:
-        resp = client.get("/channels/parse/999999/results")
+async def test_results_page_404_for_missing_job(db_session, authed_client):
+    resp = authed_client.get("/channels/parse/999999/results")
     assert resp.status_code == 404

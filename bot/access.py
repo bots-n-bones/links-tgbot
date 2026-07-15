@@ -15,6 +15,7 @@ from sqlalchemy import select
 from db.models import AuthorizedUser, Invite, User, WorkspaceMember, WorkspaceRole
 from db.session import get_sessionmaker
 from shared.config import get_settings
+from shared.workspace import get_default_workspace_id
 
 NO_ACCESS_TEXT = "Нет доступа. Если у вас есть инвайт-код — отправьте его следующим сообщением."
 INVITE_REDEEMED_TEXT = "Код принят, доступ открыт! Наберите /help, чтобы увидеть список команд."
@@ -136,6 +137,24 @@ async def get_owned_workspace_id(telegram_id: int) -> int | None:
             )
         )
         return membership.workspace_id if membership else None
+
+
+async def resolve_workspace_id(telegram_id: int) -> int:
+    """Workspace текущего пользователя в личных чатах — через WorkspaceMember
+    отправителя. Для групповых чатов резолюция по chat_id — волна 5
+    (WorkspaceChat), здесь не применяется. Для статически вайтлистнутых
+    (ADMIN_USER_ID/ALLOWED_USER_IDS), у которых ещё нет User/WorkspaceMember
+    (не гасили инвайт-код) — фоллбэк на дефолтный workspace."""
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+        if user is not None:
+            membership = await session.scalar(
+                select(WorkspaceMember).where(WorkspaceMember.user_id == user.id)
+            )
+            if membership is not None:
+                return membership.workspace_id
+    return await get_default_workspace_id()
 
 
 async def create_invite(created_by: int | None, workspace_id: int) -> str:

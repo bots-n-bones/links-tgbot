@@ -1,9 +1,10 @@
 """GET /api/collections (TZ §8, F-74) — тематические подборки."""
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 
+from api.deps import get_current_workspace_id
 from db.models import Collection
 from db.session import get_sessionmaker
 
@@ -41,11 +42,21 @@ def _to_out(c: Collection) -> CollectionOut:
 
 
 @router.get("")
-async def list_collections() -> list[CollectionOut]:
+async def list_collections(
+    workspace_id: int | None = Depends(get_current_workspace_id),
+) -> list[CollectionOut]:
+    if workspace_id is None:
+        raise HTTPException(401, "Not logged in")
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         rows = (
-            (await session.execute(select(Collection).order_by(Collection.created_at.desc())))
+            (
+                await session.execute(
+                    select(Collection)
+                    .where(Collection.workspace_id == workspace_id)
+                    .order_by(Collection.created_at.desc())
+                )
+            )
             .scalars()
             .all()
         )
@@ -53,10 +64,14 @@ async def list_collections() -> list[CollectionOut]:
 
 
 @router.get("/{collection_id}")
-async def get_collection(collection_id: int) -> CollectionOut:
+async def get_collection(
+    collection_id: int, workspace_id: int | None = Depends(get_current_workspace_id)
+) -> CollectionOut:
+    if workspace_id is None:
+        raise HTTPException(401, "Not logged in")
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         collection = await session.get(Collection, collection_id)
-    if collection is None:
+    if collection is None or collection.workspace_id != workspace_id:
         raise HTTPException(404, "Collection not found")
     return _to_out(collection)

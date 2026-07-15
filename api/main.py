@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from fastapi import FastAPI, Form, Request, Response
+from fastapi import Depends, FastAPI, Form, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select, text
@@ -14,7 +14,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from api.changelog import CHANGELOG, CURRENT_VERSION
 from api.export import links_to_csv, links_to_markdown, posts_to_csv, posts_to_markdown
 from api.export_channels import channel_posts_to_csv, channel_posts_to_markdown
-from api.deps import get_current_user
+from api.deps import get_current_user, get_current_workspace_id
 from api.routes import account as account_routes
 from api.routes import ask, auth, collections, links, research
 from api.routes import channels as channels_routes
@@ -68,6 +68,16 @@ app.include_router(auth.router)
 app.include_router(account_routes.router)
 
 
+def _require_workspace(workspace_id: int | None) -> int | RedirectResponse:
+    """Волна 4 плана "Личный кабинет + workspace": каждый роут дашборда
+    требует логина — незалогиненных и юзеров без workspace отправляем на
+    /login (там же виден статус, если юзер залогинен, но без workspace —
+    /account объясняет, что делать)."""
+    if workspace_id is None:
+        return RedirectResponse("/login")
+    return workspace_id
+
+
 @app.get("/health")
 async def health() -> dict:
     sessionmaker = get_sessionmaker()
@@ -83,12 +93,22 @@ async def index(
     area: str | None = None,
     sort: str = "date",
     page: int = 1,
+    workspace_id: int | None = Depends(get_current_workspace_id),
 ):
+    gate = _require_workspace(workspace_id)
+    if isinstance(gate, RedirectResponse):
+        return gate
+    workspace_id = gate
+
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
-        result = await query_links(session, tag=tag, area=area, sort=sort, page=page)
-        all_tags = await list_all_tags(session)
-        posts_by_link = await get_posts_by_link_ids(session, [link.id for link in result.items])
+        result = await query_links(
+            session, workspace_id=workspace_id, tag=tag, area=area, sort=sort, page=page
+        )
+        all_tags = await list_all_tags(session, workspace_id)
+        posts_by_link = await get_posts_by_link_ids(
+            session, workspace_id, [link.id for link in result.items]
+        )
 
     return templates.TemplateResponse(
         request,
@@ -114,11 +134,21 @@ async def partial_links(
     area: str | None = None,
     sort: str = "date",
     page: int = 1,
+    workspace_id: int | None = Depends(get_current_workspace_id),
 ):
+    gate = _require_workspace(workspace_id)
+    if isinstance(gate, RedirectResponse):
+        return gate
+    workspace_id = gate
+
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
-        result = await query_links(session, tag=tag, area=area, sort=sort, page=page)
-        posts_by_link = await get_posts_by_link_ids(session, [link.id for link in result.items])
+        result = await query_links(
+            session, workspace_id=workspace_id, tag=tag, area=area, sort=sort, page=page
+        )
+        posts_by_link = await get_posts_by_link_ids(
+            session, workspace_id, [link.id for link in result.items]
+        )
 
     return templates.TemplateResponse(
         request,
@@ -137,10 +167,19 @@ async def partial_links(
 
 
 @app.post("/links/add", response_class=HTMLResponse)
-async def add_link_manual(request: Request, url: str = Form(...)):
+async def add_link_manual(
+    request: Request,
+    url: str = Form(...),
+    workspace_id: int | None = Depends(get_current_workspace_id),
+):
     """Ручное добавление ссылки с дашборда — идёт через тот же dedup/LLM
     пайплайн, что и ссылки из бота (bot/ingest.py), просто с синтетическим
     источником вместо реального Telegram-сообщения."""
+    gate = _require_workspace(workspace_id)
+    if isinstance(gate, RedirectResponse):
+        return gate
+    workspace_id = gate
+
     url = url.strip()
     if not url:
         status_text = "Enter a URL."
@@ -149,6 +188,7 @@ async def add_link_manual(request: Request, url: str = Form(...)):
         async with sessionmaker() as session:
             raw_message, is_new = await ingest_message(
                 session,
+                workspace_id=workspace_id,
                 chat_id=MANUAL_ADD_CHAT_ID,
                 message_id=int(time.time() * 1000),
                 sender_id=None,
@@ -164,8 +204,10 @@ async def add_link_manual(request: Request, url: str = Form(...)):
 
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
-        result = await query_links(session, sort="date", page=1)
-        posts_by_link = await get_posts_by_link_ids(session, [link.id for link in result.items])
+        result = await query_links(session, workspace_id=workspace_id, sort="date", page=1)
+        posts_by_link = await get_posts_by_link_ids(
+            session, workspace_id, [link.id for link in result.items]
+        )
 
     list_response = templates.TemplateResponse(
         request,
@@ -189,32 +231,53 @@ async def add_link_manual(request: Request, url: str = Form(...)):
 
 
 @app.post("/ask", response_class=HTMLResponse)
-async def ask_dashboard(request: Request, question: str = Form(...)):
+async def ask_dashboard(
+    request: Request,
+    question: str = Form(...),
+    workspace_id: int | None = Depends(get_current_workspace_id),
+):
     """HTMX-виджет «Спросить базу» на дашборде (F-80). JSON-контракт для
     внешней интеграции — отдельно, POST /api/ask (api/routes/ask.py)."""
-    result = await answer_question(question)
+    gate = _require_workspace(workspace_id)
+    if isinstance(gate, RedirectResponse):
+        return gate
+    workspace_id = gate
+
+    result = await answer_question(question, workspace_id=workspace_id)
     answer_html = format_qa_reply_html(result)
     return templates.TemplateResponse(request, "_ask_result.html", {"answer_html": answer_html})
 
 
 @app.get("/links/{link_id}", response_class=HTMLResponse)
-async def link_detail_page(request: Request, link_id: int):
+async def link_detail_page(
+    request: Request, link_id: int, workspace_id: int | None = Depends(get_current_workspace_id)
+):
+    gate = _require_workspace(workspace_id)
+    if isinstance(gate, RedirectResponse):
+        return gate
+    workspace_id = gate
+
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
-        link = await get_link_detail(session, link_id)
+        link = await get_link_detail(session, workspace_id, link_id)
     if link is None:
         return HTMLResponse("Link not found", status_code=404)
     return templates.TemplateResponse(request, "link.html", {"link": link})
 
 
 @app.get("/links/{link_id}/visit")
-async def visit_link(link_id: int):
+async def visit_link(link_id: int, workspace_id: int | None = Depends(get_current_workspace_id)):
     """Считает переход по ссылке (метрика популярности на дашборде) и
     редиректит на реальный URL."""
+    gate = _require_workspace(workspace_id)
+    if isinstance(gate, RedirectResponse):
+        return gate
+    workspace_id = gate
+
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         link = await session.get(Link, link_id)
-        if link is None:
+        if link is None or link.workspace_id != workspace_id:
             return HTMLResponse("Link not found", status_code=404)
         link.click_count += 1
         target_url = link.url
@@ -223,46 +286,74 @@ async def visit_link(link_id: int):
 
 
 @app.get("/links/{link_id}/card", response_class=HTMLResponse)
-async def link_card_view(request: Request, link_id: int):
+async def link_card_view(
+    request: Request, link_id: int, workspace_id: int | None = Depends(get_current_workspace_id)
+):
     """Карточка в режиме просмотра — используется кнопкой «Отмена» в форме
     редактирования, чтобы вернуться без сохранения."""
+    gate = _require_workspace(workspace_id)
+    if isinstance(gate, RedirectResponse):
+        return gate
+    workspace_id = gate
+
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
-        link = await get_link_detail(session, link_id)
+        link = await get_link_detail(session, workspace_id, link_id)
     if link is None:
         return HTMLResponse("Link not found", status_code=404)
     return templates.TemplateResponse(request, "_link_card.html", {"link": link})
 
 
 @app.get("/links/{link_id}/detail-view", response_class=HTMLResponse)
-async def link_detail_view_fragment(request: Request, link_id: int):
+async def link_detail_view_fragment(
+    request: Request, link_id: int, workspace_id: int | None = Depends(get_current_workspace_id)
+):
     """Блок заголовок/описание/теги на странице ссылки в режиме просмотра —
     используется кнопкой «Отмена» в форме редактирования."""
+    gate = _require_workspace(workspace_id)
+    if isinstance(gate, RedirectResponse):
+        return gate
+    workspace_id = gate
+
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
-        link = await get_link_detail(session, link_id)
+        link = await get_link_detail(session, workspace_id, link_id)
     if link is None:
         return HTMLResponse("Link not found", status_code=404)
     return templates.TemplateResponse(request, "_link_detail_view.html", {"link": link})
 
 
 @app.get("/links/{link_id}/detail-edit-form", response_class=HTMLResponse)
-async def link_detail_edit_form(request: Request, link_id: int):
+async def link_detail_edit_form(
+    request: Request, link_id: int, workspace_id: int | None = Depends(get_current_workspace_id)
+):
+    gate = _require_workspace(workspace_id)
+    if isinstance(gate, RedirectResponse):
+        return gate
+    workspace_id = gate
+
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
-        link = await get_link_detail(session, link_id)
+        link = await get_link_detail(session, workspace_id, link_id)
     if link is None:
         return HTMLResponse("Link not found", status_code=404)
     return templates.TemplateResponse(request, "_link_detail_edit.html", {"link": link})
 
 
 @app.get("/links/{link_id}/edit-form", response_class=HTMLResponse)
-async def link_edit_form(request: Request, link_id: int):
+async def link_edit_form(
+    request: Request, link_id: int, workspace_id: int | None = Depends(get_current_workspace_id)
+):
     """Общая форма редактирования записи: заголовок, описание, теги.
     Сохранение идёт через PATCH /api/links/{id} (api/routes/links.py)."""
+    gate = _require_workspace(workspace_id)
+    if isinstance(gate, RedirectResponse):
+        return gate
+    workspace_id = gate
+
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
-        link = await get_link_detail(session, link_id)
+        link = await get_link_detail(session, workspace_id, link_id)
     if link is None:
         return HTMLResponse("Link not found", status_code=404)
     return templates.TemplateResponse(request, "_link_card_edit.html", {"link": link})
@@ -284,12 +375,19 @@ def _research_status_context(link_id: int, report: ResearchReport | None) -> dic
 
 
 @app.post("/links/{link_id}/research", response_class=HTMLResponse)
-async def start_research(request: Request, link_id: int):
+async def start_research(
+    request: Request, link_id: int, workspace_id: int | None = Depends(get_current_workspace_id)
+):
     """F-58/F-60: запуск research-отчёта из дашборда (не автоматически)."""
+    gate = _require_workspace(workspace_id)
+    if isinstance(gate, RedirectResponse):
+        return gate
+    workspace_id = gate
+
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         link = await session.get(Link, link_id)
-        if link is None:
+        if link is None or link.workspace_id != workspace_id:
             return HTMLResponse("Link not found", status_code=404)
         existing = await _latest_research_report(session, link_id)
     if existing is None:
@@ -300,10 +398,20 @@ async def start_research(request: Request, link_id: int):
 
 
 @app.get("/links/{link_id}/research/status", response_class=HTMLResponse)
-async def research_status(request: Request, link_id: int):
+async def research_status(
+    request: Request, link_id: int, workspace_id: int | None = Depends(get_current_workspace_id)
+):
     """F-64: поллинг прогресса («ищу… пишу отчёт…»)."""
+    gate = _require_workspace(workspace_id)
+    if isinstance(gate, RedirectResponse):
+        return gate
+    workspace_id = gate
+
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
+        link = await session.get(Link, link_id)
+        if link is None or link.workspace_id != workspace_id:
+            return HTMLResponse("Link not found", status_code=404)
         report = await _latest_research_report(session, link_id)
     return templates.TemplateResponse(
         request, "_research_status.html", _research_status_context(link_id, report)
@@ -311,11 +419,18 @@ async def research_status(request: Request, link_id: int):
 
 
 @app.get("/research/{research_id}/download")
-async def download_research_report(research_id: int):
+async def download_research_report(
+    research_id: int, workspace_id: int | None = Depends(get_current_workspace_id)
+):
+    gate = _require_workspace(workspace_id)
+    if isinstance(gate, RedirectResponse):
+        return gate
+    workspace_id = gate
+
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         report = await session.get(ResearchReport, research_id)
-    if report is None:
+    if report is None or report.workspace_id != workspace_id:
         return HTMLResponse("Report not found", status_code=404)
     return Response(
         report.report_md,
@@ -325,8 +440,20 @@ async def download_research_report(research_id: int):
 
 
 @app.post("/research/{research_id}/add-links", response_class=HTMLResponse)
-async def add_links_from_research_dashboard(research_id: int):
+async def add_links_from_research_dashboard(
+    research_id: int, workspace_id: int | None = Depends(get_current_workspace_id)
+):
     """F-65: добавить найденные research-ссылки в основную базу."""
+    gate = _require_workspace(workspace_id)
+    if isinstance(gate, RedirectResponse):
+        return gate
+    workspace_id = gate
+
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        report = await session.get(ResearchReport, research_id)
+    if report is None or report.workspace_id != workspace_id:
+        return HTMLResponse("Report not found", status_code=404)
     add_research_links.delay(research_id)
     return HTMLResponse("<p>Adding links to the database…</p>")
 
@@ -350,14 +477,21 @@ _WEEKDAY_NAMES = {
 
 
 @app.get("/digest", response_class=HTMLResponse)
-async def digest_page(request: Request):
+async def digest_page(
+    request: Request, workspace_id: int | None = Depends(get_current_workspace_id)
+):
     """Daily (Celery Beat, 12:00 МСК) и weekly (расписание из settings) дайджесты
     в одной ленте — тег Daily/Weekly проставляется в шаблоне по collection.theme."""
+    gate = _require_workspace(workspace_id)
+    if isinstance(gate, RedirectResponse):
+        return gate
+    workspace_id = gate
+
     settings = get_settings()
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         history = await list_digest_history_combined(
-            session, [DAILY_DIGEST_THEME, WEEKLY_DIGEST_THEME], limit=30
+            session, workspace_id, [DAILY_DIGEST_THEME, WEEKLY_DIGEST_THEME], limit=30
         )
 
     weekday = _WEEKDAY_NAMES.get(settings.collection_cron_day, settings.collection_cron_day)
@@ -374,11 +508,22 @@ async def digest_page(request: Request):
 
 
 @app.get("/digest/{digest_id}", response_class=HTMLResponse)
-async def digest_detail_page(request: Request, digest_id: int):
+async def digest_detail_page(
+    request: Request, digest_id: int, workspace_id: int | None = Depends(get_current_workspace_id)
+):
+    gate = _require_workspace(workspace_id)
+    if isinstance(gate, RedirectResponse):
+        return gate
+    workspace_id = gate
+
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         collection = await session.get(Collection, digest_id)
-    if collection is None or collection.theme not in (DAILY_DIGEST_THEME, WEEKLY_DIGEST_THEME):
+    if (
+        collection is None
+        or collection.workspace_id != workspace_id
+        or collection.theme not in (DAILY_DIGEST_THEME, WEEKLY_DIGEST_THEME)
+    ):
         return HTMLResponse("Digest not found", status_code=404)
     return templates.TemplateResponse(
         request, "digest_detail.html", {"collection": collection, "back_href": "/digest"}
@@ -420,8 +565,14 @@ _CHANNEL_PARSE_FORM_DEFAULTS = {
 
 
 @app.get("/channels/parse", response_class=HTMLResponse)
-async def channel_parse_form(request: Request):
+async def channel_parse_form(
+    request: Request, workspace_id: int | None = Depends(get_current_workspace_id)
+):
     """Шаг 1 wizard'а Channel Parser (TZ_CHANNELS.md §3.2)."""
+    gate = _require_workspace(workspace_id)
+    if isinstance(gate, RedirectResponse):
+        return gate
+
     return templates.TemplateResponse(
         request, "channels/parse_step1.html", {"error": None, "form": _CHANNEL_PARSE_FORM_DEFAULTS}
     )
@@ -440,10 +591,16 @@ async def channel_parse_submit(
     collect_urls: bool = Form(False),
     collect_commenters: bool = Form(False),
     voice_dna: bool = Form(True),
+    workspace_id: int | None = Depends(get_current_workspace_id),
 ):
     """Валидация формата (F-71) — идёт синхронно, без сети; существование
     канала на t.me проверяется асинхронно внутри run_channel_parse_job
     (статус validating), не здесь."""
+    gate = _require_workspace(workspace_id)
+    if isinstance(gate, RedirectResponse):
+        return gate
+    workspace_id = gate
+
     form_state = {
         "channel_input": channel_input,
         "post_limit": post_limit,
@@ -485,7 +642,9 @@ async def channel_parse_submit(
 
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
-        job = ChannelParseJob(channel_username=username, params_json=params)
+        job = ChannelParseJob(
+            workspace_id=workspace_id, channel_username=username, params_json=params
+        )
         session.add(job)
         await session.commit()
         await session.refresh(job)
@@ -495,13 +654,20 @@ async def channel_parse_submit(
 
 
 @app.get("/channels/parse/{job_id}", response_class=HTMLResponse)
-async def channel_parse_progress_page(request: Request, job_id: int):
+async def channel_parse_progress_page(
+    request: Request, job_id: int, workspace_id: int | None = Depends(get_current_workspace_id)
+):
     """Шаг 2 — прогресс + мини-игра (TZ_CHANNELS.md §3.3). parse-race.js
     редиректит на шаг 3 (/results) сам, когда status становится done."""
+    gate = _require_workspace(workspace_id)
+    if isinstance(gate, RedirectResponse):
+        return gate
+    workspace_id = gate
+
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         job = await session.get(ChannelParseJob, job_id)
-    if job is None:
+    if job is None or job.workspace_id != workspace_id:
         return HTMLResponse("Job not found", status_code=404)
     return templates.TemplateResponse(request, "channels/parse_step2.html", {"job": job})
 
@@ -515,13 +681,13 @@ CHANNEL_RESULTS_SORT_COLUMNS = {
 
 
 async def _load_channel_job_and_posts(
-    job_id: int, sort: str
+    workspace_id: int, job_id: int, sort: str
 ) -> tuple[ChannelParseJob | None, list[ChannelParsedPost]]:
     order = CHANNEL_RESULTS_SORT_COLUMNS.get(sort, CHANNEL_RESULTS_SORT_COLUMNS["date"])
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         job = await session.get(ChannelParseJob, job_id)
-        if job is None:
+        if job is None or job.workspace_id != workspace_id:
             return None, []
         posts = (
             (
@@ -538,9 +704,19 @@ async def _load_channel_job_and_posts(
 
 
 @app.get("/channels/parse/{job_id}/results", response_class=HTMLResponse)
-async def channel_parse_results_page(request: Request, job_id: int, sort: str = "date"):
+async def channel_parse_results_page(
+    request: Request,
+    job_id: int,
+    sort: str = "date",
+    workspace_id: int | None = Depends(get_current_workspace_id),
+):
     """Шаг 3 wizard'а — таблица спарсенных постов (TZ_CHANNELS.md §3.4)."""
-    job, posts = await _load_channel_job_and_posts(job_id, sort)
+    gate = _require_workspace(workspace_id)
+    if isinstance(gate, RedirectResponse):
+        return gate
+    workspace_id = gate
+
+    job, posts = await _load_channel_job_and_posts(workspace_id, job_id, sort)
     if job is None:
         return HTMLResponse("Job not found", status_code=404)
     return templates.TemplateResponse(
@@ -549,26 +725,40 @@ async def channel_parse_results_page(request: Request, job_id: int, sort: str = 
 
 
 @app.get("/channels/parse/{job_id}/export/posts.csv")
-async def export_channel_posts_csv(job_id: int):
-    _job, posts = await _load_channel_job_and_posts(job_id, "date")
+async def export_channel_posts_csv(
+    job_id: int, workspace_id: int | None = Depends(get_current_workspace_id)
+):
+    gate = _require_workspace(workspace_id)
+    if isinstance(gate, RedirectResponse):
+        return gate
+    workspace_id = gate
+
+    _job, posts = await _load_channel_job_and_posts(workspace_id, job_id, "date")
     return _download(channel_posts_to_csv(posts), f"channel-{job_id}-posts.csv", "text/csv")
 
 
 @app.get("/channels/parse/{job_id}/export/posts.md")
-async def export_channel_posts_md(job_id: int):
-    _job, posts = await _load_channel_job_and_posts(job_id, "date")
+async def export_channel_posts_md(
+    job_id: int, workspace_id: int | None = Depends(get_current_workspace_id)
+):
+    gate = _require_workspace(workspace_id)
+    if isinstance(gate, RedirectResponse):
+        return gate
+    workspace_id = gate
+
+    _job, posts = await _load_channel_job_and_posts(workspace_id, job_id, "date")
     return _download(
         channel_posts_to_markdown(posts), f"channel-{job_id}-posts.md", "text/markdown"
     )
 
 
 async def _load_channel_job_and_report(
-    job_id: int,
+    workspace_id: int, job_id: int
 ) -> tuple[ChannelParseJob | None, ChannelVoiceReport | None]:
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         job = await session.get(ChannelParseJob, job_id)
-        if job is None:
+        if job is None or job.workspace_id != workspace_id:
             return None, None
         report = (
             await session.execute(
@@ -579,9 +769,16 @@ async def _load_channel_job_and_report(
 
 
 @app.get("/channels/parse/{job_id}/report", response_class=HTMLResponse)
-async def channel_parse_report_page(request: Request, job_id: int):
+async def channel_parse_report_page(
+    request: Request, job_id: int, workspace_id: int | None = Depends(get_current_workspace_id)
+):
     """Шаг 4 wizard'а — Voice DNA отчёт (TZ_CHANNELS.md §3.5)."""
-    job, report = await _load_channel_job_and_report(job_id)
+    gate = _require_workspace(workspace_id)
+    if isinstance(gate, RedirectResponse):
+        return gate
+    workspace_id = gate
+
+    job, report = await _load_channel_job_and_report(workspace_id, job_id)
     if job is None:
         return HTMLResponse("Job not found", status_code=404)
 
@@ -606,8 +803,15 @@ async def channel_parse_report_page(request: Request, job_id: int):
 
 
 @app.get("/channels/parse/{job_id}/export/report.md")
-async def export_channel_report_md(job_id: int):
-    job, report = await _load_channel_job_and_report(job_id)
+async def export_channel_report_md(
+    job_id: int, workspace_id: int | None = Depends(get_current_workspace_id)
+):
+    gate = _require_workspace(workspace_id)
+    if isinstance(gate, RedirectResponse):
+        return gate
+    workspace_id = gate
+
+    job, report = await _load_channel_job_and_report(workspace_id, job_id)
     if job is None or report is None or not report.report_md:
         return HTMLResponse("Report not available", status_code=404)
     return _download(report.report_md, f"channel-{job_id}-voice-dna-report.md", "text/markdown")
@@ -617,17 +821,29 @@ CHANNEL_HISTORY_PAGE_SIZE = 20
 
 
 @app.get("/channels", response_class=HTMLResponse)
-async def channels_history_page(request: Request, page: int = 1):
+async def channels_history_page(
+    request: Request, page: int = 1, workspace_id: int | None = Depends(get_current_workspace_id)
+):
     """История запусков Channel Parser (TZ_CHANNELS.md §9.2)."""
+    gate = _require_workspace(workspace_id)
+    if isinstance(gate, RedirectResponse):
+        return gate
+    workspace_id = gate
+
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         total = (
-            await session.execute(select(func.count()).select_from(ChannelParseJob))
+            await session.execute(
+                select(func.count())
+                .select_from(ChannelParseJob)
+                .where(ChannelParseJob.workspace_id == workspace_id)
+            )
         ).scalar_one()
         jobs = (
             (
                 await session.execute(
                     select(ChannelParseJob)
+                    .where(ChannelParseJob.workspace_id == workspace_id)
                     .order_by(ChannelParseJob.created_at.desc(), ChannelParseJob.id.desc())
                     .offset((page - 1) * CHANNEL_HISTORY_PAGE_SIZE)
                     .limit(CHANNEL_HISTORY_PAGE_SIZE)
@@ -672,7 +888,10 @@ async def account_page(request: Request):
             ).all()
             members = [
                 {
-                    "display_name": u.display_name or u.full_name or u.username or str(u.telegram_id),
+                    "display_name": u.display_name
+                    or u.full_name
+                    or u.username
+                    or str(u.telegram_id),
                     "role": m.role.value,
                 }
                 for m, u in rows
@@ -717,11 +936,19 @@ async def posts_page(
     area: str | None = None,
     sort: str = "priority",
     page: int = 1,
+    workspace_id: int | None = Depends(get_current_workspace_id),
 ):
+    gate = _require_workspace(workspace_id)
+    if isinstance(gate, RedirectResponse):
+        return gate
+    workspace_id = gate
+
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
-        result = await query_posts(session, tag=tag, area=area, sort=sort, page=page)
-        all_tags = await list_all_post_tags(session)
+        result = await query_posts(
+            session, workspace_id=workspace_id, tag=tag, area=area, sort=sort, page=page
+        )
+        all_tags = await list_all_post_tags(session, workspace_id)
 
     return templates.TemplateResponse(
         request,
@@ -743,11 +970,20 @@ POST_URL_RE = re.compile(r"^https?://t\.me/([A-Za-z0-9_]{5,32})/(\d+)/?(?:\?.*)?
 
 
 @app.post("/posts/add", response_class=HTMLResponse)
-async def add_post_manual(request: Request, url: str = Form(...)):
+async def add_post_manual(
+    request: Request,
+    url: str = Form(...),
+    workspace_id: int | None = Depends(get_current_workspace_id),
+):
     """Ручное добавление поста по публичной t.me-ссылке — фетчим текст со
     страницы предпросмотра Telegram (доступна без авторизации для открытых
     каналов) и дальше идём через тот же worker.posts.process_post, что и
     форварды из бота."""
+    gate = _require_workspace(workspace_id)
+    if isinstance(gate, RedirectResponse):
+        return gate
+    workspace_id = gate
+
     match = POST_URL_RE.match(url.strip())
     if match is None:
         status_text = "Enter a public post link like https://t.me/channel/123."
@@ -762,6 +998,7 @@ async def add_post_manual(request: Request, url: str = Form(...)):
 
         chat_id = -int(hashlib.sha256(channel.encode()).hexdigest()[:12], 16)
         payload = {
+            "workspace_id": workspace_id,
             "chat_id": chat_id,
             "message_id": int(message_id_str),
             "chat_title": channel,
@@ -776,8 +1013,8 @@ async def add_post_manual(request: Request, url: str = Form(...)):
 
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
-        result = await query_posts(session, sort="priority", page=1)
-        all_tags = await list_all_post_tags(session)
+        result = await query_posts(session, workspace_id=workspace_id, sort="priority", page=1)
+        all_tags = await list_all_post_tags(session, workspace_id)
 
     list_response = templates.TemplateResponse(
         request,
@@ -808,11 +1045,22 @@ def _download(content: str, filename: str, media_type: str) -> Response:
 
 
 @app.get("/export/links.csv")
-async def export_links_csv():
+async def export_links_csv(workspace_id: int | None = Depends(get_current_workspace_id)):
+    gate = _require_workspace(workspace_id)
+    if isinstance(gate, RedirectResponse):
+        return gate
+    workspace_id = gate
+
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         links = (
-            (await session.execute(select(Link).where(Link.is_hidden.is_(False)))).scalars().all()
+            (
+                await session.execute(
+                    select(Link).where(Link.workspace_id == workspace_id, Link.is_hidden.is_(False))
+                )
+            )
+            .scalars()
+            .all()
         )
         for link in links:
             await session.refresh(link, attribute_names=["tags"])
@@ -820,11 +1068,22 @@ async def export_links_csv():
 
 
 @app.get("/export/links.md")
-async def export_links_md():
+async def export_links_md(workspace_id: int | None = Depends(get_current_workspace_id)):
+    gate = _require_workspace(workspace_id)
+    if isinstance(gate, RedirectResponse):
+        return gate
+    workspace_id = gate
+
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         links = (
-            (await session.execute(select(Link).where(Link.is_hidden.is_(False)))).scalars().all()
+            (
+                await session.execute(
+                    select(Link).where(Link.workspace_id == workspace_id, Link.is_hidden.is_(False))
+                )
+            )
+            .scalars()
+            .all()
         )
         for link in links:
             await session.refresh(link, attribute_names=["tags"])
@@ -832,11 +1091,22 @@ async def export_links_md():
 
 
 @app.get("/export/posts.csv")
-async def export_posts_csv():
+async def export_posts_csv(workspace_id: int | None = Depends(get_current_workspace_id)):
+    gate = _require_workspace(workspace_id)
+    if isinstance(gate, RedirectResponse):
+        return gate
+    workspace_id = gate
+
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         posts = (
-            (await session.execute(select(Post).where(Post.is_hidden.is_(False)))).scalars().all()
+            (
+                await session.execute(
+                    select(Post).where(Post.workspace_id == workspace_id, Post.is_hidden.is_(False))
+                )
+            )
+            .scalars()
+            .all()
         )
         for post in posts:
             await session.refresh(post, attribute_names=["tags"])
@@ -844,11 +1114,22 @@ async def export_posts_csv():
 
 
 @app.get("/export/posts.md")
-async def export_posts_md():
+async def export_posts_md(workspace_id: int | None = Depends(get_current_workspace_id)):
+    gate = _require_workspace(workspace_id)
+    if isinstance(gate, RedirectResponse):
+        return gate
+    workspace_id = gate
+
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         posts = (
-            (await session.execute(select(Post).where(Post.is_hidden.is_(False)))).scalars().all()
+            (
+                await session.execute(
+                    select(Post).where(Post.workspace_id == workspace_id, Post.is_hidden.is_(False))
+                )
+            )
+            .scalars()
+            .all()
         )
         for post in posts:
             await session.refresh(post, attribute_names=["tags"])

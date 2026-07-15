@@ -1,8 +1,10 @@
 import os
 
 import pytest
+import pytest_asyncio
 
 from db import session as db_session_module
+from db.models import Workspace
 from shared import config as config_module
 
 TEST_DATABASE_URL = os.environ.get(
@@ -40,3 +42,15 @@ def _stub_post_enqueue(monkeypatch):
 
     monkeypatch.setattr(group_module, "enqueue_post_processing", lambda payload, **kw: None)
     monkeypatch.setattr(private_module, "enqueue_post_processing", lambda payload, **kw: None)
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _default_workspace(db_session) -> Workspace:
+    """resolve_workspace_id/get_default_workspace_id (bot/access.py,
+    shared/workspace.py) требуют хотя бы один workspace в БД — большинству
+    тестов не важно, какой именно, поэтому заводим его тут одним разом."""
+    workspace = Workspace(name="Test workspace")
+    db_session.add(workspace)
+    await db_session.commit()
+    await db_session.refresh(workspace)
+    return workspace

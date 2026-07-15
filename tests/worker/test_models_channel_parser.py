@@ -13,8 +13,10 @@ from db.models import (
 )
 
 
-async def _make_job(db_session, **kwargs) -> ChannelParseJob:
-    defaults = dict(channel_username="somechannel", params_json={"post_limit": 50})
+async def _make_job(db_session, workspace_id, **kwargs) -> ChannelParseJob:
+    defaults = dict(
+        workspace_id=workspace_id, channel_username="somechannel", params_json={"post_limit": 50}
+    )
     defaults.update(kwargs)
     job = ChannelParseJob(**defaults)
     db_session.add(job)
@@ -23,15 +25,15 @@ async def _make_job(db_session, **kwargs) -> ChannelParseJob:
     return job
 
 
-async def test_job_defaults_to_pending_status(db_session):
-    job = await _make_job(db_session)
+async def test_job_defaults_to_pending_status(db_session, workspace_id):
+    job = await _make_job(db_session, workspace_id)
     assert job.status == ChannelParseJobStatus.pending
     assert job.progress_current == 0
     assert job.posts_count == 0
 
 
-async def test_parsed_post_unique_per_job_and_message(db_session):
-    job = await _make_job(db_session)
+async def test_parsed_post_unique_per_job_and_message(db_session, workspace_id):
+    job = await _make_job(db_session, workspace_id)
     db_session.add(
         ChannelParsedPost(
             job_id=job.id,
@@ -54,14 +56,12 @@ async def test_parsed_post_unique_per_job_and_message(db_session):
     await db_session.rollback()
 
 
-async def test_deleting_job_cascades_to_posts_and_report(db_session):
-    job = await _make_job(db_session)
+async def test_deleting_job_cascades_to_posts_and_report(db_session, workspace_id):
+    job = await _make_job(db_session, workspace_id)
     db_session.add(
         ChannelParsedPost(job_id=job.id, message_id=1, post_url="https://t.me/somechannel/1")
     )
-    db_session.add(
-        ChannelVoiceReport(job_id=job.id, status=ChannelVoiceReportStatus.pending)
-    )
+    db_session.add(ChannelVoiceReport(job_id=job.id, status=ChannelVoiceReportStatus.pending))
     await db_session.commit()
 
     await db_session.delete(job)
@@ -73,8 +73,8 @@ async def test_deleting_job_cascades_to_posts_and_report(db_session):
     assert reports == []
 
 
-async def test_voice_report_status_defaults_to_pending(db_session):
-    job = await _make_job(db_session)
+async def test_voice_report_status_defaults_to_pending(db_session, workspace_id):
+    job = await _make_job(db_session, workspace_id)
     report = ChannelVoiceReport(job_id=job.id)
     db_session.add(report)
     await db_session.commit()

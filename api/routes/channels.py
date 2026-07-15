@@ -1,8 +1,9 @@
 """Channel Parser: query-хелперы + JSON status API (TZ_CHANNELS.md §9)."""
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from api.deps import get_current_workspace_id
 from db.models import ChannelParseJob
 from db.session import get_sessionmaker
 
@@ -20,11 +21,15 @@ class JobStatusOut(BaseModel):
 
 
 @router.get("/parse/{job_id}/status")
-async def job_status(job_id: int) -> JobStatusOut:
+async def job_status(
+    job_id: int, workspace_id: int | None = Depends(get_current_workspace_id)
+) -> JobStatusOut:
+    if workspace_id is None:
+        raise HTTPException(401, "Not logged in")
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         job = await session.get(ChannelParseJob, job_id)
-    if job is None:
+    if job is None or job.workspace_id != workspace_id:
         raise HTTPException(404, "Job not found")
 
     pct = (job.progress_current / job.progress_total * 100) if job.progress_total else 0.0

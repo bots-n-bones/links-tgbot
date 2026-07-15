@@ -12,8 +12,9 @@ async def _fake_fetch_ok(url: str) -> PageMeta:
     return PageMeta(title="T", description="D", favicon_url=None, domain="x.com", raw_text="text")
 
 
-async def test_generate_research_report_creates_and_caches(db_session, monkeypatch):
+async def test_generate_research_report_creates_and_caches(db_session, workspace_id, monkeypatch):
     link = Link(
+        workspace_id=workspace_id,
         url="https://a.com",
         normalized_url="a.com",
         url_hash="h1",
@@ -43,13 +44,16 @@ async def test_generate_research_report_creates_and_caches(db_session, monkeypat
     assert len(fake_llm.complete_calls) == 1  # LLM вызван только один раз
 
 
-async def test_add_research_links_bulk_adds_via_dedup_pipeline(db_session, monkeypatch):
+async def test_add_research_links_bulk_adds_via_dedup_pipeline(
+    db_session, workspace_id, monkeypatch
+):
     llm = FakeLLMClient()
     monkeypatch.setattr(tasks_module, "get_llm_client", lambda: llm)
     monkeypatch.setattr(tasks_module, "get_embedding_client", lambda: FakeEmbeddingClient())
     monkeypatch.setattr(tasks_module, "fetch_metadata", _fake_fetch_ok)
 
     source_link = Link(
+        workspace_id=workspace_id,
         url="https://origin.com",
         normalized_url="origin.com",
         url_hash="h-origin",
@@ -60,6 +64,7 @@ async def test_add_research_links_bulk_adds_via_dedup_pipeline(db_session, monke
     await db_session.flush()
 
     report = ResearchReport(
+        workspace_id=workspace_id,
         link_id=source_link.id,
         topic="тема",
         report_md="отчёт",
@@ -88,8 +93,9 @@ async def test_add_research_links_bulk_adds_via_dedup_pipeline(db_session, monke
     assert len(links) == 2
 
 
-async def test_add_research_links_empty_sources_returns_empty(db_session):
+async def test_add_research_links_empty_sources_returns_empty(db_session, workspace_id):
     source_link = Link(
+        workspace_id=workspace_id,
         url="https://origin2.com",
         normalized_url="origin2.com",
         url_hash="h-origin2",
@@ -98,7 +104,12 @@ async def test_add_research_links_empty_sources_returns_empty(db_session):
     db_session.add(source_link)
     await db_session.flush()
     report = ResearchReport(
-        link_id=source_link.id, topic="t", report_md="md", sources_json=[], model="gpt-4o"
+        workspace_id=workspace_id,
+        link_id=source_link.id,
+        topic="t",
+        report_md="md",
+        sources_json=[],
+        model="gpt-4o",
     )
     db_session.add(report)
     await db_session.commit()

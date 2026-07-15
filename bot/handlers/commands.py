@@ -12,6 +12,7 @@ from bot.access import (
     get_owned_workspace_id,
     require_authorized,
     require_authorized_callback,
+    resolve_workspace_id,
 )
 from bot.formatting import format_link_list_html, format_qa_reply_html
 from bot.keyboards import (
@@ -51,22 +52,22 @@ HELP_TEXT = (
 )
 
 
-async def _daily_digest_text() -> str:
-    return await _latest_digest_text(DAILY_DIGEST_THEME)
+async def _daily_digest_text(workspace_id: int) -> str:
+    return await _latest_digest_text(workspace_id, DAILY_DIGEST_THEME)
 
 
-async def _weekly_digest_text() -> str:
-    return await _latest_digest_text(WEEKLY_DIGEST_THEME)
+async def _weekly_digest_text(workspace_id: int) -> str:
+    return await _latest_digest_text(workspace_id, WEEKLY_DIGEST_THEME)
 
 
-async def _latest_digest_text(theme: str) -> str:
+async def _latest_digest_text(workspace_id: int, theme: str) -> str:
     from db.models import Collection
 
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         collection = await session.scalar(
             select(Collection)
-            .where(Collection.theme == theme)
+            .where(Collection.workspace_id == workspace_id, Collection.theme == theme)
             .order_by(Collection.created_at.desc())
             .limit(1)
         )
@@ -75,20 +76,24 @@ async def _latest_digest_text(theme: str) -> str:
     return format_digest_text(collection)
 
 
-async def _stats_text() -> str:
+async def _stats_text(workspace_id: int) -> str:
     cutoff = datetime.now(UTC) - timedelta(days=7)
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
-        total_links = await session.scalar(select(func.count(Link.id)))
+        total_links = await session.scalar(
+            select(func.count(Link.id)).where(Link.workspace_id == workspace_id)
+        )
         recent_links = await session.scalar(
-            select(func.count(func.distinct(LinkSource.link_id))).where(
-                LinkSource.created_at >= cutoff
-            )
+            select(func.count(func.distinct(LinkSource.link_id)))
+            .select_from(LinkSource)
+            .join(Link, Link.id == LinkSource.link_id)
+            .where(Link.workspace_id == workspace_id, LinkSource.created_at >= cutoff)
         )
         top_tags = (
             await session.execute(
                 select(Tag.name, func.count(LinkTag.link_id))
                 .join(LinkTag, LinkTag.tag_id == Tag.id)
+                .where(Tag.workspace_id == workspace_id)
                 .group_by(Tag.name)
                 .order_by(func.count(LinkTag.link_id).desc())
                 .limit(5)
@@ -145,9 +150,9 @@ async def cmd_ask(message: Message, command: CommandObject) -> None:
     if not question:
         await message.answer("Использование: /ask <вопрос>")
         return
-    result = await answer_question(
-        question, user_id=message.from_user.id if message.from_user else None
-    )
+    user_id = message.from_user.id if message.from_user else None
+    workspace_id = await resolve_workspace_id(user_id)
+    result = await answer_question(question, workspace_id=workspace_id, user_id=user_id)
     await message.answer(
         format_qa_reply_html(result), parse_mode="HTML", reply_markup=main_menu_keyboard()
     )
@@ -163,9 +168,12 @@ async def cmd_search(message: Message, command: CommandObject) -> None:
         await message.answer("Использование: /search <тема>")
         return
 
+    workspace_id = await resolve_workspace_id(message.from_user.id if message.from_user else None)
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
-        result = await query_links(session, q=topic, sort="priority", page=1, page_size=10)
+        result = await query_links(
+            session, workspace_id=workspace_id, q=topic, sort="priority", page=1, page_size=10
+        )
 
     if not result.items:
         await message.answer("Ничего не найдено.", reply_markup=main_menu_keyboard())
@@ -180,21 +188,24 @@ async def cmd_search(message: Message, command: CommandObject) -> None:
 async def cmd_daily_digest(message: Message) -> None:
     if not await require_authorized(message):
         return
-    await message.answer(await _daily_digest_text(), reply_markup=main_menu_keyboard())
+    workspace_id = await resolve_workspace_id(message.from_user.id if message.from_user else None)
+    await message.answer(await _daily_digest_text(workspace_id), reply_markup=main_menu_keyboard())
 
 
 @router.message(Command("weekly_digest"))
 async def cmd_weekly_digest(message: Message) -> None:
     if not await require_authorized(message):
         return
-    await message.answer(await _weekly_digest_text(), reply_markup=main_menu_keyboard())
+    workspace_id = await resolve_workspace_id(message.from_user.id if message.from_user else None)
+    await message.answer(await _weekly_digest_text(workspace_id), reply_markup=main_menu_keyboard())
 
 
 @router.message(Command("stats"))
 async def cmd_stats(message: Message) -> None:
     if not await require_authorized(message):
         return
-    await message.answer(await _stats_text(), reply_markup=main_menu_keyboard())
+    workspace_id = await resolve_workspace_id(message.from_user.id if message.from_user else None)
+    await message.answer(await _stats_text(workspace_id), reply_markup=main_menu_keyboard())
 
 
 # --- Кнопки главного меню (F: взаимодействие через кнопки, а не команды) ---
@@ -205,7 +216,10 @@ async def cb_daily_digest(callback: CallbackQuery) -> None:
     if not callback.message or not await require_authorized_callback(callback):
         await callback.answer()
         return
-    await callback.message.answer(await _daily_digest_text(), reply_markup=main_menu_keyboard())
+    workspace_id = await resolve_workspace_id(callback.from_user.id)
+    await callback.message.answer(
+        await _daily_digest_text(workspace_id), reply_markup=main_menu_keyboard()
+    )
     await callback.answer()
 
 
@@ -214,7 +228,10 @@ async def cb_weekly_digest(callback: CallbackQuery) -> None:
     if not callback.message or not await require_authorized_callback(callback):
         await callback.answer()
         return
-    await callback.message.answer(await _weekly_digest_text(), reply_markup=main_menu_keyboard())
+    workspace_id = await resolve_workspace_id(callback.from_user.id)
+    await callback.message.answer(
+        await _weekly_digest_text(workspace_id), reply_markup=main_menu_keyboard()
+    )
     await callback.answer()
 
 
@@ -223,7 +240,10 @@ async def cb_stats(callback: CallbackQuery) -> None:
     if not callback.message or not await require_authorized_callback(callback):
         await callback.answer()
         return
-    await callback.message.answer(await _stats_text(), reply_markup=main_menu_keyboard())
+    workspace_id = await resolve_workspace_id(callback.from_user.id)
+    await callback.message.answer(
+        await _stats_text(workspace_id), reply_markup=main_menu_keyboard()
+    )
     await callback.answer()
 
 

@@ -1,11 +1,10 @@
-from starlette.testclient import TestClient
-
-from api.main import app
 from db.models import ChannelParseJob, ChannelParseJobStatus
 
 
-async def _make_job(db_session, **kwargs) -> ChannelParseJob:
-    defaults = dict(channel_username="testchannel", params_json={"post_limit": 50})
+async def _make_job(db_session, workspace_id: int, **kwargs) -> ChannelParseJob:
+    defaults = dict(
+        workspace_id=workspace_id, channel_username="testchannel", params_json={"post_limit": 50}
+    )
     defaults.update(kwargs)
     job = ChannelParseJob(**defaults)
     db_session.add(job)
@@ -14,16 +13,16 @@ async def _make_job(db_session, **kwargs) -> ChannelParseJob:
     return job
 
 
-async def test_status_endpoint_reports_progress(db_session):
+async def test_status_endpoint_reports_progress(db_session, workspace_id, authed_client):
     job = await _make_job(
         db_session,
+        workspace_id,
         status=ChannelParseJobStatus.scraping,
         progress_current=15,
         progress_total=50,
     )
 
-    with TestClient(app) as client:
-        resp = client.get(f"/api/channels/parse/{job.id}/status")
+    resp = authed_client.get(f"/api/channels/parse/{job.id}/status")
 
     assert resp.status_code == 200
     data = resp.json()
@@ -33,30 +32,30 @@ async def test_status_endpoint_reports_progress(db_session):
     assert data["progress_pct"] == 30.0
 
 
-async def test_status_endpoint_handles_zero_total(db_session):
-    job = await _make_job(db_session, progress_total=0, progress_current=0)
+async def test_status_endpoint_handles_zero_total(db_session, workspace_id, authed_client):
+    job = await _make_job(db_session, workspace_id, progress_total=0, progress_current=0)
 
-    with TestClient(app) as client:
-        resp = client.get(f"/api/channels/parse/{job.id}/status")
+    resp = authed_client.get(f"/api/channels/parse/{job.id}/status")
 
     assert resp.status_code == 200
     assert resp.json()["progress_pct"] == 0.0
 
 
-async def test_status_endpoint_reports_failure(db_session):
+async def test_status_endpoint_reports_failure(db_session, workspace_id, authed_client):
     job = await _make_job(
-        db_session, status=ChannelParseJobStatus.failed, error_message="Channel not found"
+        db_session,
+        workspace_id,
+        status=ChannelParseJobStatus.failed,
+        error_message="Channel not found",
     )
 
-    with TestClient(app) as client:
-        resp = client.get(f"/api/channels/parse/{job.id}/status")
+    resp = authed_client.get(f"/api/channels/parse/{job.id}/status")
 
     data = resp.json()
     assert data["status"] == "failed"
     assert data["error_message"] == "Channel not found"
 
 
-async def test_status_endpoint_404_for_missing_job(db_session):
-    with TestClient(app) as client:
-        resp = client.get("/api/channels/parse/999999/status")
+async def test_status_endpoint_404_for_missing_job(db_session, authed_client):
+    resp = authed_client.get("/api/channels/parse/999999/status")
     assert resp.status_code == 404

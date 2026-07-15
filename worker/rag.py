@@ -71,11 +71,15 @@ def _strip_hallucinated_urls(answer: str, allowed_urls: set[str]) -> str:
 
 
 async def _search_matched_links(
-    session: AsyncSession, embedding: list[float], top_k: int
+    session: AsyncSession, workspace_id: int, embedding: list[float], top_k: int
 ) -> list[MatchedItem]:
     stmt = (
         select(Link)
-        .where(Link.is_hidden.is_(False), Link.embedding.is_not(None))
+        .where(
+            Link.workspace_id == workspace_id,
+            Link.is_hidden.is_(False),
+            Link.embedding.is_not(None),
+        )
         .order_by(Link.embedding.cosine_distance(embedding))
         .limit(top_k)
     )
@@ -95,11 +99,15 @@ async def _search_matched_links(
 
 
 async def _search_matched_posts(
-    session: AsyncSession, embedding: list[float], top_k: int
+    session: AsyncSession, workspace_id: int, embedding: list[float], top_k: int
 ) -> list[MatchedItem]:
     stmt = (
         select(Post)
-        .where(Post.is_hidden.is_(False), Post.embedding.is_not(None))
+        .where(
+            Post.workspace_id == workspace_id,
+            Post.is_hidden.is_(False),
+            Post.embedding.is_not(None),
+        )
         .order_by(Post.embedding.cosine_distance(embedding))
         .limit(top_k)
     )
@@ -119,7 +127,9 @@ async def _search_matched_posts(
     ]
 
 
-async def answer_question(question: str, *, user_id: int | None = None) -> QAResult:
+async def answer_question(
+    question: str, *, workspace_id: int, user_id: int | None = None
+) -> QAResult:
     embedding_client = get_embedding_client()
     llm_client = get_llm_client()
     sessionmaker = get_sessionmaker()
@@ -128,8 +138,8 @@ async def answer_question(question: str, *, user_id: int | None = None) -> QARes
     embedding = await embedding_client.embed(question)
 
     async with sessionmaker() as session:
-        matched_links = await _search_matched_links(session, embedding, TOP_K)
-        matched_posts = await _search_matched_posts(session, embedding, TOP_K)
+        matched_links = await _search_matched_links(session, workspace_id, embedding, TOP_K)
+        matched_posts = await _search_matched_posts(session, workspace_id, embedding, TOP_K)
         # Обе выборки уже упорядочены по cosine distance внутри своей таблицы,
         # но distance между ними не сравнивается напрямую — объединяем и режем
         # по TOP_K, доверяя LLM выбрать релевантное из объединённого списка.
@@ -146,6 +156,7 @@ async def answer_question(question: str, *, user_id: int | None = None) -> QARes
 
         session.add(
             QALog(
+                workspace_id=workspace_id,
                 user_id=user_id,
                 question=question,
                 answer_md=answer,

@@ -10,6 +10,7 @@ from bot.access import (
     is_whitelisted,
     looks_like_invite_code,
     redeem_invite,
+    resolve_workspace_id,
 )
 from bot.extractors import extract_urls
 from bot.formatting import format_link_list_html, format_qa_reply_html
@@ -41,18 +42,21 @@ async def _handle_pending_menu_state(message: Message, state: FSMContext) -> boo
         return False
 
     if current_state == MenuState.waiting_for_ask.state:
-        result = await answer_question(
-            text, user_id=message.from_user.id if message.from_user else None
-        )
+        user_id = message.from_user.id if message.from_user else None
+        workspace_id = await resolve_workspace_id(user_id)
+        result = await answer_question(text, workspace_id=workspace_id, user_id=user_id)
         await message.answer(
             format_qa_reply_html(result), parse_mode="HTML", reply_markup=main_menu_keyboard()
         )
         return True
 
     if current_state == MenuState.waiting_for_search.state:
+        workspace_id = await resolve_workspace_id(message.from_user.id)
         sessionmaker = get_sessionmaker()
         async with sessionmaker() as session:
-            result = await query_links(session, q=text, sort="priority", page=1, page_size=10)
+            result = await query_links(
+                session, workspace_id=workspace_id, q=text, sort="priority", page=1, page_size=10
+            )
         if not result.items:
             await message.answer("Ничего не найдено.", reply_markup=main_menu_keyboard())
         else:
@@ -87,6 +91,7 @@ async def handle_private_message(message: Message, state: FSMContext) -> None:
         return
 
     urls = extract_urls(message)
+    workspace_id = await resolve_workspace_id(user_id)
 
     # F: пересланный пост из ПУБЛИЧНОГО канала — сохраняем как Post (со
     # ссылками внутри или без). Пересланное из закрытых чатов/просто текст
@@ -94,6 +99,7 @@ async def handle_private_message(message: Message, state: FSMContext) -> None:
     is_post_forward = is_public_channel_forward(message)
     if is_post_forward:
         payload = build_post_payload(message, urls)
+        payload["workspace_id"] = workspace_id
         payload["notify"] = True  # F: личка — воркер подтвердит добавление/ошибку
         enqueue_post_processing(payload, countdown=20 if urls else 0)
         if not urls:
@@ -104,6 +110,7 @@ async def handle_private_message(message: Message, state: FSMContext) -> None:
         async with sessionmaker() as session:
             raw_message, is_new = await ingest_message(
                 session,
+                workspace_id=workspace_id,
                 chat_id=message.chat.id,
                 message_id=message.message_id,
                 sender_id=message.from_user.id if message.from_user else None,

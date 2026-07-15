@@ -24,6 +24,7 @@ def entities_to_json(entities: list | None) -> list[dict] | None:
 async def ingest_message(
     session: AsyncSession,
     *,
+    workspace_id: int,
     chat_id: int,
     message_id: int,
     sender_id: int | None,
@@ -31,13 +32,15 @@ async def ingest_message(
     entities_json: list[dict] | None,
     source_type: SourceType,
 ) -> tuple[RawMessage, bool]:
-    """Идемпотентно сохраняет сообщение в raw_messages по (chat_id, message_id) (F-02).
+    """Идемпотентно сохраняет сообщение в raw_messages по
+    (workspace_id, chat_id, message_id) (F-02).
 
     Возвращает (raw_message, is_new).
     """
     stmt = (
         pg_insert(RawMessage)
         .values(
+            workspace_id=workspace_id,
             chat_id=chat_id,
             message_id=message_id,
             sender_id=sender_id,
@@ -46,7 +49,7 @@ async def ingest_message(
             source_type=source_type,
             processed=False,
         )
-        .on_conflict_do_nothing(index_elements=["chat_id", "message_id"])
+        .on_conflict_do_nothing(index_elements=["workspace_id", "chat_id", "message_id"])
         .returning(RawMessage)
     )
     result = await session.execute(stmt)
@@ -56,7 +59,11 @@ async def ingest_message(
         return row, True
 
     existing = await session.scalar(
-        select(RawMessage).where(RawMessage.chat_id == chat_id, RawMessage.message_id == message_id)
+        select(RawMessage).where(
+            RawMessage.workspace_id == workspace_id,
+            RawMessage.chat_id == chat_id,
+            RawMessage.message_id == message_id,
+        )
     )
     assert existing is not None  # конфликт означает, что строка уже есть
     return existing, False

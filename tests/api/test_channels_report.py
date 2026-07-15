@@ -1,6 +1,3 @@
-from starlette.testclient import TestClient
-
-from api.main import app
 from db.models import (
     ChannelParseJob,
     ChannelParseJobStatus,
@@ -9,8 +6,11 @@ from db.models import (
 )
 
 
-async def _make_job_with_report(db_session, *, report_status=ChannelVoiceReportStatus.done):
+async def _make_job_with_report(
+    db_session, workspace_id: int, *, report_status=ChannelVoiceReportStatus.done
+):
     job = ChannelParseJob(
+        workspace_id=workspace_id,
         channel_username="testchannel",
         params_json={"post_limit": 10, "voice_dna": True},
         status=ChannelParseJobStatus.done,
@@ -59,11 +59,10 @@ async def _make_job_with_report(db_session, *, report_status=ChannelVoiceReportS
     return job, report
 
 
-async def test_report_page_renders_all_four_tabs(db_session):
-    job, _report = await _make_job_with_report(db_session)
+async def test_report_page_renders_all_four_tabs(db_session, workspace_id, authed_client):
+    job, _report = await _make_job_with_report(db_session, workspace_id)
 
-    with TestClient(app) as client:
-        resp = client.get(f"/channels/parse/{job.id}/report")
+    resp = authed_client.get(f"/channels/parse/{job.id}/report")
 
     assert resp.status_code == 200
     assert "① Summary" in resp.text
@@ -74,86 +73,88 @@ async def test_report_page_renders_all_four_tabs(db_session):
     assert "Insight one" in resp.text
 
 
-async def test_report_page_includes_disclaimer(db_session):
-    job, _report = await _make_job_with_report(db_session)
+async def test_report_page_includes_disclaimer(db_session, workspace_id, authed_client):
+    job, _report = await _make_job_with_report(db_session, workspace_id)
 
-    with TestClient(app) as client:
-        resp = client.get(f"/channels/parse/{job.id}/report")
+    resp = authed_client.get(f"/channels/parse/{job.id}/report")
 
     assert "субъективная оценка алгоритма" in resp.text
 
 
-async def test_report_page_kpi_hero_shows_consistency_scores_and_posts_count(db_session):
-    job, _report = await _make_job_with_report(db_session)
+async def test_report_page_kpi_hero_shows_consistency_scores_and_posts_count(
+    db_session, workspace_id, authed_client
+):
+    job, _report = await _make_job_with_report(db_session, workspace_id)
 
-    with TestClient(app) as client:
-        resp = client.get(f"/channels/parse/{job.id}/report")
+    resp = authed_client.get(f"/channels/parse/{job.id}/report")
 
     assert "75%" in resp.text  # style_consistency
     assert "65%" in resp.text  # structure_consistency
     assert "250" in resp.text
 
 
-async def test_report_page_serializes_chart_data_as_json(db_session):
-    job, _report = await _make_job_with_report(db_session)
+async def test_report_page_serializes_chart_data_as_json(db_session, workspace_id, authed_client):
+    job, _report = await _make_job_with_report(db_session, workspace_id)
 
-    with TestClient(app) as client:
-        resp = client.get(f"/channels/parse/{job.id}/report")
+    resp = authed_client.get(f"/channels/parse/{job.id}/report")
 
     assert '"chart_voice_radar"' in resp.text
     assert 'id="chart-data"' in resp.text
 
 
-async def test_report_page_shows_unavailable_state_when_report_failed(db_session):
+async def test_report_page_shows_unavailable_state_when_report_failed(
+    db_session, workspace_id, authed_client
+):
     job, _report = await _make_job_with_report(
-        db_session, report_status=ChannelVoiceReportStatus.failed
+        db_session, workspace_id, report_status=ChannelVoiceReportStatus.failed
     )
 
-    with TestClient(app) as client:
-        resp = client.get(f"/channels/parse/{job.id}/report")
+    resp = authed_client.get(f"/channels/parse/{job.id}/report")
 
     assert resp.status_code == 200
     assert "unavailable" in resp.text.lower()
     assert "① Summary" not in resp.text
 
 
-async def test_report_page_shows_unavailable_state_when_no_report_yet(db_session):
-    job = ChannelParseJob(channel_username="testchannel", params_json={"post_limit": 10})
+async def test_report_page_shows_unavailable_state_when_no_report_yet(
+    db_session, workspace_id, authed_client
+):
+    job = ChannelParseJob(
+        workspace_id=workspace_id, channel_username="testchannel", params_json={"post_limit": 10}
+    )
     db_session.add(job)
     await db_session.commit()
     await db_session.refresh(job)
 
-    with TestClient(app) as client:
-        resp = client.get(f"/channels/parse/{job.id}/report")
+    resp = authed_client.get(f"/channels/parse/{job.id}/report")
 
     assert resp.status_code == 200
     assert "unavailable" in resp.text.lower()
 
 
-async def test_report_page_404_for_missing_job(db_session):
-    with TestClient(app) as client:
-        resp = client.get("/channels/parse/999999/report")
+async def test_report_page_404_for_missing_job(db_session, authed_client):
+    resp = authed_client.get("/channels/parse/999999/report")
     assert resp.status_code == 404
 
 
-async def test_export_report_md(db_session):
-    job, _report = await _make_job_with_report(db_session)
+async def test_export_report_md(db_session, workspace_id, authed_client):
+    job, _report = await _make_job_with_report(db_session, workspace_id)
 
-    with TestClient(app) as client:
-        resp = client.get(f"/channels/parse/{job.id}/export/report.md")
+    resp = authed_client.get(f"/channels/parse/{job.id}/export/report.md")
 
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("text/markdown")
     assert "Voice DNA Report" in resp.text
 
 
-async def test_export_report_md_404_when_missing(db_session):
-    job = ChannelParseJob(channel_username="testchannel", params_json={"post_limit": 10})
+async def test_export_report_md_404_when_missing(db_session, workspace_id, authed_client):
+    job = ChannelParseJob(
+        workspace_id=workspace_id, channel_username="testchannel", params_json={"post_limit": 10}
+    )
     db_session.add(job)
     await db_session.commit()
     await db_session.refresh(job)
 
-    with TestClient(app) as client:
-        resp = client.get(f"/channels/parse/{job.id}/export/report.md")
+    resp = authed_client.get(f"/channels/parse/{job.id}/export/report.md")
 
     assert resp.status_code == 404

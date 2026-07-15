@@ -1,13 +1,12 @@
 from datetime import UTC, datetime
 
-from starlette.testclient import TestClient
-
-from api.main import app
 from db.models import ChannelParsedPost, ChannelParseJob
 
 
-async def _make_job_with_post(db_session) -> ChannelParseJob:
-    job = ChannelParseJob(channel_username="testchannel", params_json={"post_limit": 10})
+async def _make_job_with_post(db_session, workspace_id: int) -> ChannelParseJob:
+    job = ChannelParseJob(
+        workspace_id=workspace_id, channel_username="testchannel", params_json={"post_limit": 10}
+    )
     db_session.add(job)
     await db_session.commit()
     await db_session.refresh(job)
@@ -31,11 +30,10 @@ async def _make_job_with_post(db_session) -> ChannelParseJob:
     return job
 
 
-async def test_export_csv_contains_post_data(db_session):
-    job = await _make_job_with_post(db_session)
+async def test_export_csv_contains_post_data(db_session, workspace_id, authed_client):
+    job = await _make_job_with_post(db_session, workspace_id)
 
-    with TestClient(app) as client:
-        resp = client.get(f"/channels/parse/{job.id}/export/posts.csv")
+    resp = authed_client.get(f"/channels/parse/{job.id}/export/posts.csv")
 
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("text/csv")
@@ -43,11 +41,10 @@ async def test_export_csv_contains_post_data(db_session):
     assert "post_url" in resp.text.splitlines()[0]
 
 
-async def test_export_md_contains_post_data(db_session):
-    job = await _make_job_with_post(db_session)
+async def test_export_md_contains_post_data(db_session, workspace_id, authed_client):
+    job = await _make_job_with_post(db_session, workspace_id)
 
-    with TestClient(app) as client:
-        resp = client.get(f"/channels/parse/{job.id}/export/posts.md")
+    resp = authed_client.get(f"/channels/parse/{job.id}/export/posts.md")
 
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("text/markdown")

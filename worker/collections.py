@@ -50,13 +50,19 @@ def _digest_user_prompt(reference_links: list[Link], candidates: list[SearchResu
     )
 
 
-async def _reference_links(session, period_start: datetime, period_end: datetime) -> list[Link]:
+async def _reference_links(
+    session, workspace_id: int, period_start: datetime, period_end: datetime
+) -> list[Link]:
     recent_link_ids = select(LinkSource.link_id).where(
         LinkSource.created_at >= period_start, LinkSource.created_at < period_end
     )
     stmt = (
         select(Link)
-        .where(Link.id.in_(recent_link_ids), Link.is_hidden.is_(False))
+        .where(
+            Link.workspace_id == workspace_id,
+            Link.id.in_(recent_link_ids),
+            Link.is_hidden.is_(False),
+        )
         .order_by(Link.priority_score.desc())
         .limit(REFERENCE_LINKS_LIMIT)
     )
@@ -89,6 +95,7 @@ def _select_valid_articles(
 
 async def _generate_web_digest(
     *,
+    workspace_id: int,
     theme: str,
     title_prefix: str,
     window_days: int,
@@ -104,7 +111,7 @@ async def _generate_web_digest(
     period_start = period_end - timedelta(days=window_days)
 
     async with sessionmaker() as session:
-        reference_links = await _reference_links(session, period_start, period_end)
+        reference_links = await _reference_links(session, workspace_id, period_start, period_end)
         if not reference_links:
             return None  # нет своей активности за период — не с чем сверять планку качества
 
@@ -126,6 +133,7 @@ async def _generate_web_digest(
             return None
 
         collection = Collection(
+            workspace_id=workspace_id,
             title=f"{title_prefix} — {period_end.strftime('%b %d, %Y')}",
             theme=theme,
             period_start=period_start.date(),
@@ -140,10 +148,13 @@ async def _generate_web_digest(
         return collection
 
 
-async def generate_daily_digest(*, now: datetime | None = None) -> Collection | None:
+async def generate_daily_digest(
+    *, workspace_id: int, now: datetime | None = None
+) -> Collection | None:
     """Ежедневная (Celery Beat, 12:00 МСК) подборка топ-10 свежих статей из
     интернета, подобранных GPT под планку качества нашей базы за сутки."""
     return await _generate_web_digest(
+        workspace_id=workspace_id,
         theme=DAILY_DIGEST_THEME,
         title_prefix="Daily digest",
         window_days=1,
@@ -162,10 +173,13 @@ def format_digest_text(collection: Collection) -> str:
     return "\n".join(lines)[:4000]
 
 
-async def generate_weekly_digest(*, now: datetime | None = None) -> Collection | None:
+async def generate_weekly_digest(
+    *, workspace_id: int, now: datetime | None = None
+) -> Collection | None:
     """Еженедельная (Celery Beat, понедельник 09:00 МСК) подборка топ-10 свежих
     статей из интернета за прошедшую неделю."""
     return await _generate_web_digest(
+        workspace_id=workspace_id,
         theme=WEEKLY_DIGEST_THEME,
         title_prefix="Weekly digest",
         window_days=7,

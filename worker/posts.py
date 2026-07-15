@@ -61,11 +61,14 @@ async def _process_post_inner(payload: dict) -> PostResult:
     sessionmaker = get_sessionmaker()
 
     text = (payload.get("text") or "").strip()
+    workspace_id = payload["workspace_id"]
 
     async with sessionmaker() as session:
         existing = await session.scalar(
             select(Post).where(
-                Post.chat_id == payload["chat_id"], Post.message_id == payload["message_id"]
+                Post.workspace_id == workspace_id,
+                Post.chat_id == payload["chat_id"],
+                Post.message_id == payload["message_id"],
             )
         )
         if existing is not None:
@@ -94,7 +97,9 @@ async def _process_post_inner(payload: dict) -> PostResult:
         link_summaries: list[str] = []
         for url in payload.get("urls", []):
             h = url_hash(normalize_url(url))
-            link = await session.scalar(select(Link).where(Link.url_hash == h))
+            link = await session.scalar(
+                select(Link).where(Link.workspace_id == workspace_id, Link.url_hash == h)
+            )
             if link is not None:
                 link_ids.append(link.id)
                 await session.refresh(link, attribute_names=["tags"])
@@ -105,6 +110,7 @@ async def _process_post_inner(payload: dict) -> PostResult:
 
         now = datetime.now(UTC)
         post = Post(
+            workspace_id=workspace_id,
             chat_id=payload["chat_id"],
             message_id=payload["message_id"],
             chat_title=payload.get("chat_title"),
@@ -123,9 +129,11 @@ async def _process_post_inner(payload: dict) -> PostResult:
         await session.flush()
 
         for name in tag_names:
-            tag = await session.scalar(select(Tag).where(Tag.name == name))
+            tag = await session.scalar(
+                select(Tag).where(Tag.workspace_id == workspace_id, Tag.name == name)
+            )
             if tag is None:
-                tag = Tag(name=name, slug=name)
+                tag = Tag(workspace_id=workspace_id, name=name, slug=name)
                 session.add(tag)
                 await session.flush()
             session.add(PostTag(post_id=post.id, tag_id=tag.id))

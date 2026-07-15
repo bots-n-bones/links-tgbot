@@ -1,13 +1,15 @@
 from datetime import UTC, date, datetime
 
+from sqlalchemy import select
+
 import worker.tasks as tasks_module
 from db.models import ChannelParsedPost, ChannelParseJob, ChannelParseJobStatus, RawMessage
-from sqlalchemy import select
 from worker.channel_scraper import ChannelPreview, ChannelScrapeError, ScrapedPost
 
 
-async def _make_job(db_session, **params) -> ChannelParseJob:
+async def _make_job(db_session, workspace_id, **params) -> ChannelParseJob:
     job = ChannelParseJob(
+        workspace_id=workspace_id,
         channel_username="testchannel",
         params_json={"post_limit": 10, **params},
     )
@@ -28,11 +30,13 @@ def _fake_post(message_id: int, *, urls=None, views=100) -> ScrapedPost:
     )
 
 
-async def test_job_completes_without_voice_dna(db_session, monkeypatch):
-    job = await _make_job(db_session, voice_dna=False)
+async def test_job_completes_without_voice_dna(db_session, workspace_id, monkeypatch):
+    job = await _make_job(db_session, workspace_id, voice_dna=False)
 
     async def fake_validate(username):
-        return ChannelPreview(username=username, title="Test Channel", avatar_url=None, subscribers=100)
+        return ChannelPreview(
+            username=username, title="Test Channel", avatar_url=None, subscribers=100
+        )
 
     async def fake_scrape(username, **kwargs):
         if kwargs.get("on_progress"):
@@ -52,18 +56,24 @@ async def test_job_completes_without_voice_dna(db_session, monkeypatch):
     assert job.finished_at is not None
 
     posts = (
-        (await db_session.execute(select(ChannelParsedPost).where(ChannelParsedPost.job_id == job.id)))
+        (
+            await db_session.execute(
+                select(ChannelParsedPost).where(ChannelParsedPost.job_id == job.id)
+            )
+        )
         .scalars()
         .all()
     )
     assert len(posts) == 2
 
 
-async def test_job_triggers_voice_dna_analysis_task(db_session, monkeypatch):
-    job = await _make_job(db_session, voice_dna=True)
+async def test_job_triggers_voice_dna_analysis_task(db_session, workspace_id, monkeypatch):
+    job = await _make_job(db_session, workspace_id, voice_dna=True)
 
     async def fake_validate(username):
-        return ChannelPreview(username=username, title="Test Channel", avatar_url=None, subscribers=100)
+        return ChannelPreview(
+            username=username, title="Test Channel", avatar_url=None, subscribers=100
+        )
 
     async def fake_scrape(username, **kwargs):
         return [_fake_post(1)]
@@ -83,8 +93,8 @@ async def test_job_triggers_voice_dna_analysis_task(db_session, monkeypatch):
     assert job.status == ChannelParseJobStatus.analyzing
 
 
-async def test_job_fails_when_channel_invalid(db_session, monkeypatch):
-    job = await _make_job(db_session)
+async def test_job_fails_when_channel_invalid(db_session, workspace_id, monkeypatch):
+    job = await _make_job(db_session, workspace_id)
 
     async def fake_validate(username):
         raise ChannelScrapeError(f"Channel @{username} not found or private")
@@ -99,11 +109,13 @@ async def test_job_fails_when_channel_invalid(db_session, monkeypatch):
     assert job.finished_at is not None
 
 
-async def test_job_fails_when_scrape_raises(db_session, monkeypatch):
-    job = await _make_job(db_session)
+async def test_job_fails_when_scrape_raises(db_session, workspace_id, monkeypatch):
+    job = await _make_job(db_session, workspace_id)
 
     async def fake_validate(username):
-        return ChannelPreview(username=username, title="Test Channel", avatar_url=None, subscribers=100)
+        return ChannelPreview(
+            username=username, title="Test Channel", avatar_url=None, subscribers=100
+        )
 
     async def fake_scrape(username, **kwargs):
         raise RuntimeError("boom")
@@ -118,11 +130,13 @@ async def test_job_fails_when_scrape_raises(db_session, monkeypatch):
     assert "scrape failed" in job.error_message
 
 
-async def test_job_computes_date_range_from_posts(db_session, monkeypatch):
-    job = await _make_job(db_session, voice_dna=False)
+async def test_job_computes_date_range_from_posts(db_session, workspace_id, monkeypatch):
+    job = await _make_job(db_session, workspace_id, voice_dna=False)
 
     async def fake_validate(username):
-        return ChannelPreview(username=username, title="Test Channel", avatar_url=None, subscribers=100)
+        return ChannelPreview(
+            username=username, title="Test Channel", avatar_url=None, subscribers=100
+        )
 
     posts = [
         ScrapedPost(
@@ -155,11 +169,13 @@ async def test_job_computes_date_range_from_posts(db_session, monkeypatch):
     assert job.avg_views == 15
 
 
-async def test_collect_urls_enqueues_link_processing(db_session, monkeypatch):
-    job = await _make_job(db_session, voice_dna=False, collect_urls=True)
+async def test_collect_urls_enqueues_link_processing(db_session, workspace_id, monkeypatch):
+    job = await _make_job(db_session, workspace_id, voice_dna=False, collect_urls=True)
 
     async def fake_validate(username):
-        return ChannelPreview(username=username, title="Test Channel", avatar_url=None, subscribers=100)
+        return ChannelPreview(
+            username=username, title="Test Channel", avatar_url=None, subscribers=100
+        )
 
     async def fake_scrape(username, **kwargs):
         return [_fake_post(1, urls=["https://example.com/a", "https://example.com/b"])]

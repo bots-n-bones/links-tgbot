@@ -1,14 +1,21 @@
 """TZ §4.7, F-60..F-65 — research-отчёты ("Собрать ещё"), JSON-контракт (§8)."""
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 
+from api.deps import get_current_workspace_id
 from db.models import Link, ResearchReport
 from db.session import get_sessionmaker
 from worker.tasks import add_research_links, generate_research_report
 
 router = APIRouter(tags=["research"])
+
+
+def _require_workspace(workspace_id: int | None) -> int:
+    if workspace_id is None:
+        raise HTTPException(401, "Not logged in")
+    return workspace_id
 
 
 class ResearchTriggerResponse(BaseModel):
@@ -17,11 +24,14 @@ class ResearchTriggerResponse(BaseModel):
 
 
 @router.post("/api/links/{link_id}/research", status_code=202)
-async def trigger_research(link_id: int) -> ResearchTriggerResponse:
+async def trigger_research(
+    link_id: int, workspace_id: int | None = Depends(get_current_workspace_id)
+) -> ResearchTriggerResponse:
+    workspace_id = _require_workspace(workspace_id)
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         link = await session.get(Link, link_id)
-        if link is None:
+        if link is None or link.workspace_id != workspace_id:
             raise HTTPException(404, "Link not found")
 
         existing = await session.scalar(
@@ -46,11 +56,14 @@ class ResearchReportOut(BaseModel):
 
 
 @router.get("/api/research/{research_id}")
-async def get_research(research_id: int) -> ResearchReportOut:
+async def get_research(
+    research_id: int, workspace_id: int | None = Depends(get_current_workspace_id)
+) -> ResearchReportOut:
+    workspace_id = _require_workspace(workspace_id)
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         report = await session.get(ResearchReport, research_id)
-    if report is None:
+    if report is None or report.workspace_id != workspace_id:
         raise HTTPException(404, "Research report not found")
     return ResearchReportOut(
         id=report.id,
@@ -63,11 +76,14 @@ async def get_research(research_id: int) -> ResearchReportOut:
 
 
 @router.post("/api/research/{research_id}/add-links", status_code=202)
-async def add_links_from_research(research_id: int) -> dict:
+async def add_links_from_research(
+    research_id: int, workspace_id: int | None = Depends(get_current_workspace_id)
+) -> dict:
+    workspace_id = _require_workspace(workspace_id)
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         report = await session.get(ResearchReport, research_id)
-    if report is None:
+    if report is None or report.workspace_id != workspace_id:
         raise HTTPException(404, "Research report not found")
     add_research_links.delay(research_id)  # F-65
     return {"status": "queued"}

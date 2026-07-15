@@ -53,11 +53,15 @@ class ManualPriority(str, enum.Enum):
 
 class Link(Base):
     __tablename__ = "links"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "url_hash", name="uq_links_workspace_url_hash"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), nullable=False)
     url: Mapped[str] = mapped_column(Text, nullable=False)
     normalized_url: Mapped[str] = mapped_column(Text, nullable=False)
-    url_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    url_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     title: Mapped[str | None] = mapped_column(Text)
     description: Mapped[str | None] = mapped_column(Text)
     area: Mapped[str | None] = mapped_column(
@@ -117,10 +121,13 @@ class LinkSource(Base):
 class RawMessage(Base):
     __tablename__ = "raw_messages"
     __table_args__ = (
-        UniqueConstraint("chat_id", "message_id", name="uq_raw_messages_chat_message"),
+        UniqueConstraint(
+            "workspace_id", "chat_id", "message_id", name="uq_raw_messages_workspace_chat_message"
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), nullable=False)
     chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     message_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     sender_id: Mapped[int | None] = mapped_column(BigInteger)
@@ -135,10 +142,15 @@ class RawMessage(Base):
 
 class Tag(Base):
     __tablename__ = "tags"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "name", name="uq_tags_workspace_name"),
+        UniqueConstraint("workspace_id", "slug", name="uq_tags_workspace_slug"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
-    slug: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    slug: Mapped[str] = mapped_column(String(100), nullable=False)
 
     links: Mapped[list["Link"]] = relationship(secondary="link_tags", back_populates="tags")
     posts: Mapped[list["Post"]] = relationship(secondary="post_tags", back_populates="tags")
@@ -157,9 +169,14 @@ class Post(Base):
     обычному пайплайну в links; тут хранится сам пост как отдельная единица."""
 
     __tablename__ = "posts"
-    __table_args__ = (UniqueConstraint("chat_id", "message_id", name="uq_posts_chat_message"),)
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id", "chat_id", "message_id", name="uq_posts_workspace_chat_message"
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), nullable=False)
     chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     message_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     chat_title: Mapped[str | None] = mapped_column(Text)
@@ -195,9 +212,13 @@ class PostTag(Base):
 
 class TagSynonym(Base):
     __tablename__ = "tag_synonyms"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "raw_value", name="uq_tag_synonyms_workspace_raw_value"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    raw_value: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), nullable=False)
+    raw_value: Mapped[str] = mapped_column(String(100), nullable=False)
     canonical_tag: Mapped[str] = mapped_column(String(100), nullable=False)
 
 
@@ -205,6 +226,7 @@ class ResearchReport(Base):
     __tablename__ = "research_reports"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), nullable=False)
     link_id: Mapped[int] = mapped_column(ForeignKey("links.id"))
     topic: Mapped[str | None] = mapped_column(Text)
     report_md: Mapped[str] = mapped_column(Text, nullable=False)
@@ -218,6 +240,7 @@ class Collection(Base):
     __tablename__ = "collections"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     theme: Mapped[str | None] = mapped_column(String(100))
     period_start: Mapped[date | None] = mapped_column(Date)
@@ -303,6 +326,7 @@ class QALog(Base):
     __tablename__ = "qa_logs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), nullable=False)
     user_id: Mapped[int | None] = mapped_column(BigInteger)
     question: Mapped[str] = mapped_column(Text, nullable=False)
     answer_md: Mapped[str] = mapped_column(Text, nullable=False)
@@ -339,6 +363,7 @@ class ChannelParseJob(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), nullable=False)
     status: Mapped[ChannelParseJobStatus] = mapped_column(
         Enum(ChannelParseJobStatus, name="channel_parse_job_status"),
         default=ChannelParseJobStatus.pending,

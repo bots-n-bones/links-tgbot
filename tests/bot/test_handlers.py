@@ -571,8 +571,9 @@ async def test_cmd_search_without_topic_shows_usage(db_session):
     assert msg.sent == ["Использование: /search <тема>"]
 
 
-async def test_cmd_search_returns_bare_list(db_session):
+async def test_cmd_search_returns_bare_list(db_session, _default_workspace):
     link = Link(
+        workspace_id=_default_workspace.id,
         url="https://a.com",
         normalized_url="a.com",
         url_hash="h-search",
@@ -621,10 +622,11 @@ async def test_cmd_stats_works_in_group_for_non_whitelisted_sender(db_session):
     assert "Всего ссылок в базе" in msg.sent[0]
 
 
-async def test_cmd_weekly_digest_returns_latest_collection(db_session):
+async def test_cmd_weekly_digest_returns_latest_collection(db_session, _default_workspace):
     from datetime import date
 
     collection = Collection(
+        workspace_id=_default_workspace.id,
         title="Weekly digest — Jul 07, 2026",
         theme="weekly-digest",
         period_start=date(2026, 7, 1),
@@ -642,10 +644,11 @@ async def test_cmd_weekly_digest_returns_latest_collection(db_session):
     assert "why it matters" in msg.sent[0]
 
 
-async def test_cmd_daily_digest_ignores_weekly_collection(db_session):
+async def test_cmd_daily_digest_ignores_weekly_collection(db_session, _default_workspace):
     from datetime import date
 
     collection = Collection(
+        workspace_id=_default_workspace.id,
         title="Weekly digest — Jul 07, 2026",
         theme="weekly-digest",
         period_start=date(2026, 7, 1),
@@ -661,8 +664,9 @@ async def test_cmd_daily_digest_ignores_weekly_collection(db_session):
     assert "Подборок пока нет" in msg.sent[0]
 
 
-async def test_cmd_stats_reports_counts_and_top_tags(db_session):
+async def test_cmd_stats_reports_counts_and_top_tags(db_session, _default_workspace):
     link = Link(
+        workspace_id=_default_workspace.id,
         url="https://a.com",
         normalized_url="a.com",
         url_hash="h-stats",
@@ -671,7 +675,7 @@ async def test_cmd_stats_reports_counts_and_top_tags(db_session):
     )
     db_session.add(link)
     await db_session.flush()
-    tag = Tag(name="ai", slug="ai")
+    tag = Tag(workspace_id=_default_workspace.id, name="ai", slug="ai")
     db_session.add(tag)
     await db_session.flush()
     db_session.add(LinkTag(link_id=link.id, tag_id=tag.id))
@@ -746,8 +750,9 @@ async def test_ask_button_flow_answers_next_message_as_question(db_session):
     assert await state.get_state() is None  # состояние очищено после обработки
 
 
-async def test_search_button_flow_answers_next_message_as_topic(db_session):
+async def test_search_button_flow_answers_next_message_as_topic(db_session, _default_workspace):
     link = Link(
+        workspace_id=_default_workspace.id,
         url="https://a.com",
         normalized_url="a.com",
         url_hash="h-search-btn",

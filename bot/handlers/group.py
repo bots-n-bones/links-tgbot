@@ -9,6 +9,7 @@ from bot.post_capture import build_post_payload
 from db.models import SourceType
 from db.session import get_sessionmaker
 from shared.url_normalizer import is_telegram_link
+from shared.workspace import get_default_workspace_id
 from worker.chat import answer_casually
 
 router = Router(name="group")
@@ -19,8 +20,11 @@ def _strip_mention(text: str, bot_username: str) -> str:
     return re.sub(re.escape(f"@{bot_username}"), "", text, count=1, flags=re.IGNORECASE).strip()
 
 
-def _enqueue_post(message: Message, urls: list[str]) -> None:
+async def _enqueue_post(message: Message, urls: list[str]) -> None:
     payload = build_post_payload(message, urls)
+    # Групповой чат ещё не резолвится в конкретный workspace (волна 5,
+    # WorkspaceChat) — временно дефолтный workspace.
+    payload["workspace_id"] = await get_default_workspace_id()
     # Ссылки в посте обрабатываются отдельным быстрым pipeline'ом — даём ему
     # время создать Link до того, как классифицируем пост (см. bot/ingest.py).
     enqueue_post_processing(payload, countdown=20 if urls else 0)
@@ -33,10 +37,14 @@ async def handle_group_message(message: Message, bot_username: str = "") -> None
     # в пересланных постах), а не на контент — в группах не собираем.
     urls = [u for u in extract_urls(message) if not is_telegram_link(u)]
     if urls:
+        # Групповой чат ещё не резолвится в конкретный workspace (волна 5,
+        # WorkspaceChat) — временно дефолтный workspace.
+        workspace_id = await get_default_workspace_id()
         sessionmaker = get_sessionmaker()
         async with sessionmaker() as session:
             raw_message, is_new = await ingest_message(
                 session,
+                workspace_id=workspace_id,
                 chat_id=message.chat.id,
                 message_id=message.message_id,
                 sender_id=message.from_user.id if message.from_user else None,
@@ -51,7 +59,7 @@ async def handle_group_message(message: Message, bot_username: str = "") -> None
     # (форварды из личных сообщений сохраняются как есть без этого условия,
     # см. bot/handlers/private.py).
     if urls and (message.text or message.caption or message.photo):
-        _enqueue_post(message, urls)
+        await _enqueue_post(message, urls)
 
     if urls:
         return

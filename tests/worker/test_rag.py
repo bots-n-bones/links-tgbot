@@ -32,11 +32,12 @@ def _dim_vector(hot_index: int, dim: int = 1536) -> list[float]:
     return v
 
 
-async def test_answer_question_ranks_closest_link_first(db_session, monkeypatch):
+async def test_answer_question_ranks_closest_link_first(db_session, workspace_id, monkeypatch):
     close_vec = _dim_vector(0)
     far_vec = _dim_vector(1)  # ортогонален close_vec => дальше по cosine distance
 
     link_close = Link(
+        workspace_id=workspace_id,
         url="https://close.com",
         normalized_url="close.com",
         url_hash="hash-close",
@@ -46,6 +47,7 @@ async def test_answer_question_ranks_closest_link_first(db_session, monkeypatch)
         embedding=close_vec,
     )
     link_far = Link(
+        workspace_id=workspace_id,
         url="https://far.com",
         normalized_url="far.com",
         url_hash="hash-far",
@@ -63,7 +65,9 @@ async def test_answer_question_ranks_closest_link_first(db_session, monkeypatch)
     )
     monkeypatch.setattr(rag_module, "get_llm_client", lambda: fake_llm)
 
-    result = await rag_module.answer_question("что там про RAG?", user_id=42)
+    result = await rag_module.answer_question(
+        "что там про RAG?", workspace_id=workspace_id, user_id=42
+    )
 
     assert result.matched_links[0].url == "https://close.com"
     assert "https://close.com" in result.answer
@@ -78,14 +82,14 @@ async def test_answer_question_ranks_closest_link_first(db_session, monkeypatch)
     assert logs[0].matched_post_ids == []
 
 
-async def test_answer_question_with_empty_db_still_logs(db_session, monkeypatch):
+async def test_answer_question_with_empty_db_still_logs(db_session, workspace_id, monkeypatch):
     monkeypatch.setattr(
         rag_module, "get_embedding_client", lambda: FixedEmbeddingClient(_dim_vector(0))
     )
     fake_llm = FixedLLMClient("В базе пока ничего подходящего нет.")
     monkeypatch.setattr(rag_module, "get_llm_client", lambda: fake_llm)
 
-    result = await rag_module.answer_question("есть что-то про X?")
+    result = await rag_module.answer_question("есть что-то про X?", workspace_id=workspace_id)
 
     assert result.matched_links == []
     logs = (await db_session.execute(select(QALog))).scalars().all()
@@ -94,8 +98,9 @@ async def test_answer_question_with_empty_db_still_logs(db_session, monkeypatch)
     assert logs[0].matched_post_ids == []
 
 
-async def test_answer_question_excludes_hidden_links(db_session, monkeypatch):
+async def test_answer_question_excludes_hidden_links(db_session, workspace_id, monkeypatch):
     hidden_link = Link(
+        workspace_id=workspace_id,
         url="https://hidden.com",
         normalized_url="hidden.com",
         url_hash="hash-hidden",
@@ -112,12 +117,13 @@ async def test_answer_question_excludes_hidden_links(db_session, monkeypatch):
     )
     monkeypatch.setattr(rag_module, "get_llm_client", lambda: FixedLLMClient("нет данных"))
 
-    result = await rag_module.answer_question("вопрос")
+    result = await rag_module.answer_question("вопрос", workspace_id=workspace_id)
     assert result.matched_links == []
 
 
-async def test_answer_question_includes_matched_posts(db_session, monkeypatch):
+async def test_answer_question_includes_matched_posts(db_session, workspace_id, monkeypatch):
     post = Post(
+        workspace_id=workspace_id,
         chat_id=-100123,
         message_id=1,
         chat_title="Team chat",
@@ -134,7 +140,7 @@ async def test_answer_question_includes_matched_posts(db_session, monkeypatch):
     fake_llm = FixedLLMClient("См. https://t.me/somechannel/5 про RAG.")
     monkeypatch.setattr(rag_module, "get_llm_client", lambda: fake_llm)
 
-    result = await rag_module.answer_question("что там про RAG?")
+    result = await rag_module.answer_question("что там про RAG?", workspace_id=workspace_id)
 
     assert len(result.matched_links) == 1
     assert result.matched_links[0].kind == "post"
@@ -146,8 +152,9 @@ async def test_answer_question_includes_matched_posts(db_session, monkeypatch):
     assert logs[0].matched_post_ids == [post.id]
 
 
-async def test_answer_question_excludes_hidden_posts(db_session, monkeypatch):
+async def test_answer_question_excludes_hidden_posts(db_session, workspace_id, monkeypatch):
     hidden_post = Post(
+        workspace_id=workspace_id,
         chat_id=-100123,
         message_id=2,
         chat_title="Team chat",
@@ -164,7 +171,7 @@ async def test_answer_question_excludes_hidden_posts(db_session, monkeypatch):
     )
     monkeypatch.setattr(rag_module, "get_llm_client", lambda: FixedLLMClient("нет данных"))
 
-    result = await rag_module.answer_question("вопрос")
+    result = await rag_module.answer_question("вопрос", workspace_id=workspace_id)
     assert result.matched_links == []
 
 

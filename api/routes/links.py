@@ -7,18 +7,26 @@ PATCH для внешней интеграции (TZ §8) можно добав�
 from dataclasses import dataclass
 from datetime import datetime
 
-from fastapi import APIRouter, Form, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.deps import get_current_workspace_id
 from api.routes.posts import get_posts_by_link_ids
 from api.templates_env import templates
 from db.models import Collection, Link, LinkSource, LinkTag, ManualPriority, Tag
 from db.session import get_sessionmaker
 from shared.tag_normalizer import normalize_tags
 from worker.llm import normalize_area
+
+
+def _require_workspace(workspace_id: int | None) -> int:
+    if workspace_id is None:
+        raise HTTPException(401, "Not logged in")
+    return workspace_id
+
 
 router = APIRouter(prefix="/api/links", tags=["links"])
 
@@ -52,6 +60,7 @@ class LinkListResult:
 async def query_links(
     session: AsyncSession,
     *,
+    workspace_id: int,
     tag: str | None = None,
     area: str | None = None,
     chat: str | None = None,
@@ -61,7 +70,10 @@ async def query_links(
     page: int = 1,
     page_size: int = PAGE_SIZE,
 ) -> LinkListResult:
-    conditions = [Link.is_hidden.is_(False)]  # F-57: скрытые не в основной ленте
+    conditions = [
+        Link.workspace_id == workspace_id,
+        Link.is_hidden.is_(False),  # F-57: скрытые не в основной ленте
+    ]
 
     if tag:
         conditions.append(
@@ -100,23 +112,25 @@ async def query_links(
     return LinkListResult(items=items, total=total, page=page, page_size=page_size)
 
 
-async def get_latest_digest(session: AsyncSession, theme: str) -> Collection | None:
+async def get_latest_digest(
+    session: AsyncSession, workspace_id: int, theme: str
+) -> Collection | None:
     return await session.scalar(
         select(Collection)
-        .where(Collection.theme == theme)
+        .where(Collection.workspace_id == workspace_id, Collection.theme == theme)
         .order_by(Collection.created_at.desc())
         .limit(1)
     )
 
 
 async def list_digest_history(
-    session: AsyncSession, theme: str, *, offset: int = 0, limit: int = 10
+    session: AsyncSession, workspace_id: int, theme: str, *, offset: int = 0, limit: int = 10
 ) -> list[Collection]:
     return list(
         (
             await session.execute(
                 select(Collection)
-                .where(Collection.theme == theme)
+                .where(Collection.workspace_id == workspace_id, Collection.theme == theme)
                 .order_by(Collection.created_at.desc())
                 .offset(offset)
                 .limit(limit)
@@ -128,7 +142,7 @@ async def list_digest_history(
 
 
 async def list_digest_history_combined(
-    session: AsyncSession, themes: list[str], *, offset: int = 0, limit: int = 10
+    session: AsyncSession, workspace_id: int, themes: list[str], *, offset: int = 0, limit: int = 10
 ) -> list[Collection]:
     """Daily+weekly дайджесты в одной вкладке (F) — общая лента обеих тем,
     отсортированная по дате, тег Daily/Weekly проставляется в шаблоне по
@@ -137,7 +151,7 @@ async def list_digest_history_combined(
         (
             await session.execute(
                 select(Collection)
-                .where(Collection.theme.in_(themes))
+                .where(Collection.workspace_id == workspace_id, Collection.theme.in_(themes))
                 .order_by(Collection.created_at.desc())
                 .offset(offset)
                 .limit(limit)
@@ -148,19 +162,20 @@ async def list_digest_history_combined(
     )
 
 
-async def list_all_tags(session: AsyncSession) -> list[tuple[str, int]]:
+async def list_all_tags(session: AsyncSession, workspace_id: int) -> list[tuple[str, int]]:
     stmt = (
         select(Tag.name, func.count(LinkTag.link_id))
         .join(LinkTag, LinkTag.tag_id == Tag.id)
+        .where(Tag.workspace_id == workspace_id)
         .group_by(Tag.name)
         .order_by(Tag.name)
     )
     return list((await session.execute(stmt)).all())
 
 
-async def get_link_detail(session: AsyncSession, link_id: int) -> Link | None:
+async def get_link_detail(session: AsyncSession, workspace_id: int, link_id: int) -> Link | None:
     link = await session.get(Link, link_id)
-    if link is None:
+    if link is None or link.workspace_id != workspace_id:
         return None
     await session.refresh(link, attribute_names=["tags", "sources"])
     return link
@@ -212,6 +227,13 @@ class LinkOut(BaseModel):
         )
 
 
+async def _get_owned_link(session: AsyncSession, workspace_id: int, link_id: int) -> Link:
+    link = await session.get(Link, link_id)
+    if link is None or link.workspace_id != workspace_id:
+        raise HTTPException(404, "Link not found")
+    return link
+
+
 @router.get("")
 async def list_links_api(
     tag: str | None = None,
@@ -219,10 +241,14 @@ async def list_links_api(
     q: str | None = None,
     sort: str = "date",
     page: int = 1,
+    workspace_id: int | None = Depends(get_current_workspace_id),
 ):
+    workspace_id = _require_workspace(workspace_id)
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
-        result = await query_links(session, tag=tag, chat=chat, q=q, sort=sort, page=page)
+        result = await query_links(
+            session, workspace_id=workspace_id, tag=tag, chat=chat, q=q, sort=sort, page=page
+        )
     return {
         "items": [LinkOut.from_link(link).model_dump(mode="json") for link in result.items],
         "total": result.total,
@@ -232,10 +258,11 @@ async def list_links_api(
 
 
 @router.get("/{link_id}")
-async def get_link_api(link_id: int):
+async def get_link_api(link_id: int, workspace_id: int | None = Depends(get_current_workspace_id)):
+    workspace_id = _require_workspace(workspace_id)
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
-        link = await get_link_detail(session, link_id)
+        link = await get_link_detail(session, workspace_id, link_id)
     if link is None:
         raise HTTPException(404, "Link not found")
     out = LinkOut.from_link(link).model_dump(mode="json")
@@ -262,17 +289,17 @@ async def update_link(
     priority: str = Form(""),
     tested: bool = Form(False),
     view: str = Form("card"),
+    workspace_id: int | None = Depends(get_current_workspace_id),
 ):
     """Общая функция редактирования записи: заголовок, описание, теги, area,
     ручной приоритет, отметка "оттестировано" — заменяет старый
     узкоспециализированный PATCH .../tags. view=card|detail определяет, какой
     HTML-фрагмент вернуть (карточка в списке или блок на странице ссылки) —
     сам PATCH и модель данных при этом общие."""
+    workspace_id = _require_workspace(workspace_id)
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
-        link = await session.get(Link, link_id)
-        if link is None:
-            raise HTTPException(404, "Link not found")
+        link = await _get_owned_link(session, workspace_id, link_id)
 
         link.title = title.strip() or None
         link.description = description.strip() or None
@@ -287,9 +314,11 @@ async def update_link(
 
         await session.execute(LinkTag.__table__.delete().where(LinkTag.link_id == link_id))
         for name in normalized:
-            existing_tag = await session.scalar(select(Tag).where(Tag.name == name))
+            existing_tag = await session.scalar(
+                select(Tag).where(Tag.workspace_id == workspace_id, Tag.name == name)
+            )
             if existing_tag is None:
-                existing_tag = Tag(name=name, slug=name)
+                existing_tag = Tag(workspace_id=workspace_id, name=name, slug=name)
                 session.add(existing_tag)
                 await session.flush()
             session.add(LinkTag(link_id=link_id, tag_id=existing_tag.id))
@@ -298,7 +327,7 @@ async def update_link(
 
         if _wants_html(request):
             template_name = "_link_detail_view.html" if view == "detail" else "_link_card.html"
-            posts_by_link = await get_posts_by_link_ids(session, [link.id])
+            posts_by_link = await get_posts_by_link_ids(session, workspace_id, [link.id])
             return templates.TemplateResponse(
                 request, template_name, {"link": link, "posts_by_link": posts_by_link}
             )
@@ -306,15 +335,19 @@ async def update_link(
 
 
 @router.patch("/{link_id}/priority")
-async def update_link_priority(link_id: int, request: Request, priority: str = Form(...)):
+async def update_link_priority(
+    link_id: int,
+    request: Request,
+    priority: str = Form(...),
+    workspace_id: int | None = Depends(get_current_workspace_id),
+):
     """Inline-редактирование Priority прямо в строке таблицы (select с
     hx-trigger=change) — трогает только это поле, в отличие от update_link,
     которому нужна вся форма редактирования целиком."""
+    workspace_id = _require_workspace(workspace_id)
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
-        link = await session.get(Link, link_id)
-        if link is None:
-            raise HTTPException(404, "Link not found")
+        link = await _get_owned_link(session, workspace_id, link_id)
         if priority not in (p.value for p in ManualPriority):
             raise HTTPException(422, "Invalid priority")
         link.manual_priority = ManualPriority(priority)
@@ -322,7 +355,7 @@ async def update_link_priority(link_id: int, request: Request, priority: str = F
         await session.refresh(link, attribute_names=["tags"])
 
         if _wants_html(request):
-            posts_by_link = await get_posts_by_link_ids(session, [link.id])
+            posts_by_link = await get_posts_by_link_ids(session, workspace_id, [link.id])
             return templates.TemplateResponse(
                 request, "_link_card.html", {"link": link, "posts_by_link": posts_by_link}
             )
@@ -330,21 +363,25 @@ async def update_link_priority(link_id: int, request: Request, priority: str = F
 
 
 @router.patch("/{link_id}/tested")
-async def update_link_tested(link_id: int, request: Request, tested: bool = Form(False)):
+async def update_link_tested(
+    link_id: int,
+    request: Request,
+    tested: bool = Form(False),
+    workspace_id: int | None = Depends(get_current_workspace_id),
+):
     """Inline-редактирование Tested прямо в строке таблицы (чекбокс с
     hx-trigger=change) — снятая галочка не шлёт значение в форме, поэтому
     default=False корректно отражает "unchecked"."""
+    workspace_id = _require_workspace(workspace_id)
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
-        link = await session.get(Link, link_id)
-        if link is None:
-            raise HTTPException(404, "Link not found")
+        link = await _get_owned_link(session, workspace_id, link_id)
         link.is_tested = tested
         await session.commit()
         await session.refresh(link, attribute_names=["tags"])
 
         if _wants_html(request):
-            posts_by_link = await get_posts_by_link_ids(session, [link.id])
+            posts_by_link = await get_posts_by_link_ids(session, workspace_id, [link.id])
             return templates.TemplateResponse(
                 request, "_link_card.html", {"link": link, "posts_by_link": posts_by_link}
             )
@@ -352,12 +389,16 @@ async def update_link_tested(link_id: int, request: Request, tested: bool = Form
 
 
 @router.patch("/{link_id}/hide")
-async def update_hide(link_id: int, request: Request, hidden: bool = Query(True)):
+async def update_hide(
+    link_id: int,
+    request: Request,
+    hidden: bool = Query(True),
+    workspace_id: int | None = Depends(get_current_workspace_id),
+):
+    workspace_id = _require_workspace(workspace_id)
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
-        link = await session.get(Link, link_id)
-        if link is None:
-            raise HTTPException(404, "Link not found")
+        link = await _get_owned_link(session, workspace_id, link_id)
         link.is_hidden = hidden
         await session.commit()
 

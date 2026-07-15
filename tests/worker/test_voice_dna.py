@@ -171,8 +171,10 @@ def test_compute_deterministic_profile_fields_empty_input():
     }
 
 
-async def test_analyze_voice_dna_creates_report_and_marks_job_done(db_session):
-    job = ChannelParseJob(channel_username="testchannel", params_json={"post_limit": 10})
+async def test_analyze_voice_dna_creates_report_and_marks_job_done(db_session, workspace_id):
+    job = ChannelParseJob(
+        workspace_id=workspace_id, channel_username="testchannel", params_json={"post_limit": 10}
+    )
     db_session.add(job)
     await db_session.commit()
     await db_session.refresh(job)
@@ -233,8 +235,10 @@ async def test_analyze_voice_dna_creates_report_and_marks_job_done(db_session):
     assert report.report_sections_json["summary"]["voice_identity"] == profile["voice_identity"]
 
 
-async def test_analyze_voice_dna_marks_report_failed_when_no_posts(db_session):
-    job = ChannelParseJob(channel_username="emptychannel", params_json={"post_limit": 10})
+async def test_analyze_voice_dna_marks_report_failed_when_no_posts(db_session, workspace_id):
+    job = ChannelParseJob(
+        workspace_id=workspace_id, channel_username="emptychannel", params_json={"post_limit": 10}
+    )
     db_session.add(job)
     await db_session.commit()
     await db_session.refresh(job)

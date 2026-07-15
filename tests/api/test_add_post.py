@@ -1,10 +1,7 @@
-from starlette.testclient import TestClient
-
 import api.main as main_module
-from api.main import app
 
 
-async def test_add_post_manual_enqueues_processing(db_session, monkeypatch):
+async def test_add_post_manual_enqueues_processing(db_session, authed_client, monkeypatch):
     enqueued: list[dict] = []
     monkeypatch.setattr(
         main_module, "enqueue_post_processing", lambda payload, **kw: enqueued.append(payload)
@@ -23,8 +20,7 @@ async def test_add_post_manual_enqueues_processing(db_session, monkeypatch):
 
     monkeypatch.setattr(main_module, "fetch_metadata", fake_fetch)
 
-    with TestClient(app) as client:
-        resp = client.post("/posts/add", data={"url": "https://t.me/somechannel/42"})
+    resp = authed_client.post("/posts/add", data={"url": "https://t.me/somechannel/42"})
 
     assert resp.status_code == 200
     assert "Added" in resp.text
@@ -36,21 +32,20 @@ async def test_add_post_manual_enqueues_processing(db_session, monkeypatch):
     assert payload["text"] == "Some post text"
 
 
-async def test_add_post_manual_rejects_invalid_url(db_session, monkeypatch):
+async def test_add_post_manual_rejects_invalid_url(db_session, authed_client, monkeypatch):
     enqueued: list[dict] = []
     monkeypatch.setattr(
         main_module, "enqueue_post_processing", lambda payload, **kw: enqueued.append(payload)
     )
 
-    with TestClient(app) as client:
-        resp = client.post("/posts/add", data={"url": "https://example.com/not-a-post"})
+    resp = authed_client.post("/posts/add", data={"url": "https://example.com/not-a-post"})
 
     assert resp.status_code == 200
     assert "Enter a public post link" in resp.text
     assert enqueued == []
 
 
-async def test_add_post_manual_falls_back_when_fetch_fails(db_session, monkeypatch):
+async def test_add_post_manual_falls_back_when_fetch_fails(db_session, authed_client, monkeypatch):
     enqueued: list[dict] = []
     monkeypatch.setattr(
         main_module, "enqueue_post_processing", lambda payload, **kw: enqueued.append(payload)
@@ -63,8 +58,7 @@ async def test_add_post_manual_falls_back_when_fetch_fails(db_session, monkeypat
 
     monkeypatch.setattr(main_module, "fetch_metadata", fake_fetch)
 
-    with TestClient(app) as client:
-        resp = client.post("/posts/add", data={"url": "https://t.me/somechannel/7"})
+    resp = authed_client.post("/posts/add", data={"url": "https://t.me/somechannel/7"})
 
     assert resp.status_code == 200
     assert "Added" in resp.text

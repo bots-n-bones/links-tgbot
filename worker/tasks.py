@@ -36,6 +36,7 @@ from shared.redact import redact_text
 from shared.tag_normalizer import normalize_tags
 from shared.telegram_throttle import send_message_throttled
 from shared.url_normalizer import normalize_url, url_hash
+from shared.workspace import get_default_workspace_id
 from worker.channel_scraper import (
     ChannelScrapeError,
     ScrapedPost,
@@ -145,10 +146,12 @@ def _entities_from_json(entities_json: list[dict] | None) -> list[SimpleNamespac
     return [SimpleNamespace(**e) for e in entities_json]
 
 
-async def _get_or_create_tag(session, name: str) -> Tag:
-    tag = await session.scalar(select(Tag).where(Tag.name == name))
+async def _get_or_create_tag(session, workspace_id: int, name: str) -> Tag:
+    tag = await session.scalar(
+        select(Tag).where(Tag.workspace_id == workspace_id, Tag.name == name)
+    )
     if tag is None:
-        tag = Tag(name=name, slug=name)
+        tag = Tag(workspace_id=workspace_id, name=name, slug=name)
         session.add(tag)
         await session.flush()
     return tag
@@ -166,8 +169,11 @@ async def _process_one_url(
     normalized = normalize_url(url)
     h = url_hash(normalized)
     now = datetime.now(UTC)
+    workspace_id = raw_message.workspace_id
 
-    existing = await session.scalar(select(Link).where(Link.url_hash == h))
+    existing = await session.scalar(
+        select(Link).where(Link.workspace_id == workspace_id, Link.url_hash == h)
+    )
 
     if existing is not None:
         # F-12: дубль — новая link_source, счётчики, БЕЗ повторного вызова LLM
@@ -217,6 +223,7 @@ async def _process_one_url(
 
     # Новая ссылка
     link = Link(
+        workspace_id=workspace_id,
         url=url,
         normalized_url=normalized,
         url_hash=h,
@@ -252,7 +259,7 @@ async def _process_one_url(
     link.usefulness_breakdown = llm_result.usefulness.as_breakdown()
     normalized_tags = normalize_tags(llm_result.tags, synonyms)
     for tag_name in normalized_tags:
-        tag = await _get_or_create_tag(session, tag_name)
+        tag = await _get_or_create_tag(session, workspace_id, tag_name)
         session.add(LinkTag(link_id=link.id, tag_id=tag.id))
 
     embedding = await embedding_client.embed(f"{title or ''} {llm_result.description}".strip())
@@ -372,7 +379,17 @@ async def _process_raw_message_async(raw_message_id: int, notify: bool = True) -
             if raw_message is None or raw_message.processed:
                 return
 
-            synonyms_rows = (await session.execute(select(TagSynonym))).scalars().all()
+            synonyms_rows = (
+                (
+                    await session.execute(
+                        select(TagSynonym).where(
+                            TagSynonym.workspace_id == raw_message.workspace_id
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
             synonyms = {r.raw_value: r.canonical_tag for r in synonyms_rows}
 
             fake_message = SimpleNamespace(
@@ -514,6 +531,7 @@ async def _generate_research_report_async(link_id: int) -> int:
         )
 
         report = ResearchReport(
+            workspace_id=link.workspace_id,
             link_id=link_id,
             topic=topic,
             report_md=report_md,
@@ -544,10 +562,19 @@ async def _add_research_links_async(research_report_id: int) -> list[int]:
         if report is None or not report.sources_json:
             return []
 
-        synonyms_rows = (await session.execute(select(TagSynonym))).scalars().all()
+        synonyms_rows = (
+            (
+                await session.execute(
+                    select(TagSynonym).where(TagSynonym.workspace_id == report.workspace_id)
+                )
+            )
+            .scalars()
+            .all()
+        )
         synonyms = {r.raw_value: r.canonical_tag for r in synonyms_rows}
 
         fake_raw_message = SimpleNamespace(
+            workspace_id=report.workspace_id,
             chat_id=None,
             message_id=None,
             sender_id=0,
@@ -570,7 +597,10 @@ async def _add_research_links_async(research_report_id: int) -> list[int]:
                 synonyms,
             )
             link = await session.scalar(
-                select(Link).where(Link.url_hash == url_hash(normalize_url(url)))
+                select(Link).where(
+                    Link.workspace_id == report.workspace_id,
+                    Link.url_hash == url_hash(normalize_url(url)),
+                )
             )
             if link is not None:
                 added_link_ids.append(link.id)
@@ -598,14 +628,16 @@ async def _broadcast_digest(collection: Collection) -> None:
 
 
 async def _generate_weekly_digest_and_broadcast_async() -> None:
-    collection = await generate_weekly_digest()
+    workspace_id = await get_default_workspace_id()
+    collection = await generate_weekly_digest(workspace_id=workspace_id)
     if collection is None:
         return
     await _broadcast_digest(collection)
 
 
 async def _generate_daily_digest_and_broadcast_async() -> None:
-    collection = await generate_daily_digest()
+    workspace_id = await get_default_workspace_id()
+    collection = await generate_daily_digest(workspace_id=workspace_id)
     if collection is None:
         return
     await _broadcast_digest(collection)
@@ -651,7 +683,7 @@ def _channel_url_chat_id(channel_username: str) -> int:
 
 
 async def _collect_urls_from_posts(
-    sessionmaker, channel_username: str, posts: list[ScrapedPost]
+    sessionmaker, workspace_id: int, channel_username: str, posts: list[ScrapedPost]
 ) -> None:
     chat_id = _channel_url_chat_id(channel_username)
     async with sessionmaker() as session:
@@ -662,6 +694,7 @@ async def _collect_urls_from_posts(
                 synthetic_message_id = post.message_id * 1000 + url_idx
                 raw_message, is_new = await ingest_message(
                     session,
+                    workspace_id=workspace_id,
                     chat_id=chat_id,
                     message_id=synthetic_message_id,
                     sender_id=None,
@@ -764,7 +797,7 @@ async def _run_channel_parse_job_async(job_id: int) -> None:
         await session.commit()
 
     if params.get("collect_urls"):
-        await _collect_urls_from_posts(sessionmaker, username, posts)
+        await _collect_urls_from_posts(sessionmaker, job.workspace_id, username, posts)
 
     if params.get("voice_dna", True):
         async with sessionmaker() as session:
