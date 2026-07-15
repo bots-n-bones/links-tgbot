@@ -8,7 +8,13 @@
 <div class="panel">
   <div class="panel-header">
     <span class="panel-title">History</span>
-    <a class="btn btn-primary" href="/channels/parse"><span class="plus-icon">+</span>Parse a channel</a>
+    <div style="display: flex; gap: 8px; align-items: center;">
+      {% if is_logged_in %}
+      <a class="btn{{ ' btn-primary' if not mine else '' }}" href="/channels">All</a>
+      <a class="btn{{ ' btn-primary' if mine else '' }}" href="/channels?mine=true">My channels</a>
+      {% endif %}
+      <a class="btn btn-primary" href="/channels/parse"><span class="plus-icon">+</span>Parse a channel</a>
+    </div>
   </div>
 
   {% if jobs %}
@@ -19,6 +25,7 @@
           <th>Channel</th>
           <th>Status</th>
           <th>Posts</th>
+          <th>Requested by</th>
           <th>Date</th>
           <th></th>
         </tr>
@@ -29,6 +36,7 @@
           <td class="col-title">@{{ job.channel_username }}</td>
           <td>{{ job.status.value }}</td>
           <td>{{ job.posts_count }}</td>
+          <td>{{ requesters.get(job.requested_by_user_id, "—") }}</td>
           <td>{{ job.created_at.strftime('%b %d, %Y') if job.created_at else "—" }}</td>
           <td class="col-actions">
             {% if job.status.value == "done" %}
@@ -41,6 +49,13 @@
             {% else %}
               <a class="btn" href="/channels/parse/{{ job.id }}">In progress…</a>
             {% endif %}
+            {% if is_logged_in %}
+              {% if job.channel_username in watched_usernames %}
+                <button class="btn watchlist-btn" data-channel="{{ job.channel_username }}" data-watching="true">★ Watching</button>
+              {% else %}
+                <button class="btn watchlist-btn" data-channel="{{ job.channel_username }}" data-watching="false">☆ Watch</button>
+              {% endif %}
+            {% endif %}
           </td>
         </tr>
         {% endfor %}
@@ -48,24 +63,43 @@
     </table>
   </div>
   {% else %}
-    <p class="panel-empty">No channels parsed yet.</p>
+    <p class="panel-empty">{{ "No watched channels yet." if mine else "No channels parsed yet." }}</p>
   {% endif %}
 
   {% if total > page_size %}
   {% set total_pages = ((total - 1) // page_size) + 1 %}
   <div class="pagination">
     {% if page > 1 %}
-      <a href="/channels?page={{ page - 1 }}">←</a>
+      <a href="/channels?page={{ page - 1 }}{{ '&mine=true' if mine else '' }}">←</a>
     {% else %}
       <span class="pagination-disabled">←</span>
     {% endif %}
     <span class="pagination-current">Page {{ page }} of {{ total_pages }}</span>
     {% if page < total_pages %}
-      <a href="/channels?page={{ page + 1 }}">→</a>
+      <a href="/channels?page={{ page + 1 }}{{ '&mine=true' if mine else '' }}">→</a>
     {% else %}
       <span class="pagination-disabled">→</span>
     {% endif %}
   </div>
   {% endif %}
 </div>
+
+<script>
+  document.querySelectorAll(".watchlist-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var channel = btn.dataset.channel;
+      var watching = btn.dataset.watching === "true";
+      var request = watching
+        ? fetch("/api/account/watchlist/" + encodeURIComponent(channel), { method: "DELETE" })
+        : fetch("/api/account/watchlist", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ channel_username: channel }),
+          });
+      request.then(function (r) {
+        if (r.ok) location.reload();
+      });
+    });
+  });
+</script>
 {% endblock %}

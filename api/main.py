@@ -34,6 +34,7 @@ from db.models import (
     ChannelParseJob,
     ChannelVoiceReport,
     ChannelVoiceReportStatus,
+    ChannelWatch,
     Collection,
     Invite,
     Link,
@@ -600,6 +601,7 @@ async def channel_parse_submit(
     if isinstance(gate, RedirectResponse):
         return gate
     workspace_id = gate
+    current_user = await get_current_user(request)
 
     form_state = {
         "channel_input": channel_input,
@@ -643,7 +645,10 @@ async def channel_parse_submit(
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         job = ChannelParseJob(
-            workspace_id=workspace_id, channel_username=username, params_json=params
+            workspace_id=workspace_id,
+            requested_by_user_id=current_user.id if current_user else None,
+            channel_username=username,
+            params_json=params,
         )
         session.add(job)
         await session.commit()
@@ -822,28 +827,49 @@ CHANNEL_HISTORY_PAGE_SIZE = 20
 
 @app.get("/channels", response_class=HTMLResponse)
 async def channels_history_page(
-    request: Request, page: int = 1, workspace_id: int | None = Depends(get_current_workspace_id)
+    request: Request,
+    page: int = 1,
+    mine: bool = False,
+    workspace_id: int | None = Depends(get_current_workspace_id),
 ):
-    """История запусков Channel Parser (TZ_CHANNELS.md §9.2)."""
+    """История запусков Channel Parser (TZ_CHANNELS.md §9.2) — атрибуция
+    "кто запросил" + личная вкладка "Мои каналы" (волна 6, ChannelWatch)."""
     gate = _require_workspace(workspace_id)
     if isinstance(gate, RedirectResponse):
         return gate
     workspace_id = gate
+    current_user = await get_current_user(request)
 
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
+        watched_usernames: set[str] = set()
+        if current_user is not None:
+            watched_usernames = set(
+                (
+                    await session.execute(
+                        select(ChannelWatch.channel_username).where(
+                            ChannelWatch.user_id == current_user.id
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+        conditions = [ChannelParseJob.workspace_id == workspace_id]
+        if mine:
+            conditions.append(ChannelParseJob.channel_username.in_(watched_usernames))
+
         total = (
             await session.execute(
-                select(func.count())
-                .select_from(ChannelParseJob)
-                .where(ChannelParseJob.workspace_id == workspace_id)
+                select(func.count()).select_from(ChannelParseJob).where(*conditions)
             )
         ).scalar_one()
         jobs = (
             (
                 await session.execute(
                     select(ChannelParseJob)
-                    .where(ChannelParseJob.workspace_id == workspace_id)
+                    .where(*conditions)
                     .order_by(ChannelParseJob.created_at.desc(), ChannelParseJob.id.desc())
                     .offset((page - 1) * CHANNEL_HISTORY_PAGE_SIZE)
                     .limit(CHANNEL_HISTORY_PAGE_SIZE)
@@ -852,6 +878,20 @@ async def channels_history_page(
             .scalars()
             .all()
         )
+
+        requester_ids = {job.requested_by_user_id for job in jobs if job.requested_by_user_id}
+        requesters: dict[int, str] = {}
+        if requester_ids:
+            rows = (
+                (await session.execute(select(User).where(User.id.in_(requester_ids))))
+                .scalars()
+                .all()
+            )
+            requesters = {
+                u.id: u.display_name or u.full_name or u.username or str(u.telegram_id)
+                for u in rows
+            }
+
     return templates.TemplateResponse(
         request,
         "channels/index.html",
@@ -860,6 +900,10 @@ async def channels_history_page(
             "total": total,
             "page": page,
             "page_size": CHANNEL_HISTORY_PAGE_SIZE,
+            "mine": mine,
+            "requesters": requesters,
+            "watched_usernames": watched_usernames,
+            "is_logged_in": current_user is not None,
         },
     )
 

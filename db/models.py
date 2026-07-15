@@ -377,6 +377,7 @@ class ChannelParseJob(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), nullable=False)
+    requested_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     status: Mapped[ChannelParseJobStatus] = mapped_column(
         Enum(ChannelParseJobStatus, name="channel_parse_job_status"),
         default=ChannelParseJobStatus.pending,
@@ -463,3 +464,20 @@ class ChannelVoiceReport(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     job: Mapped["ChannelParseJob"] = relationship(back_populates="voice_report")
+
+
+class ChannelWatch(Base):
+    """Личный watchlist каналов (волна 6 плана "Личный кабинет + workspace") —
+    персональный, не дублирует общий (workspace-scoped) каталог job'ов/постов,
+    просто отмечает "этот канал интересен именно мне"."""
+
+    __tablename__ = "channel_watches"
+    __table_args__ = (
+        UniqueConstraint("user_id", "channel_username", name="uq_channel_watches_user_channel"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    channel_username: Mapped[str] = mapped_column(String(32), nullable=False)
+    notify_on_new_report: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
