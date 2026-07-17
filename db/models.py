@@ -88,6 +88,7 @@ class Link(Base):
     )
     is_tested: Mapped[bool] = mapped_column(Boolean, default=False)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
+    added_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -198,6 +199,7 @@ class Post(Base):
     # Для единого RAG-поиска /ask по links+posts (worker/rag.py) — та же модель,
     # что и Link.embedding.
     embedding: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
+    added_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     tags: Mapped[list["Tag"]] = relationship(secondary="post_tags", back_populates="posts")
@@ -268,6 +270,7 @@ class Workspace(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     plan: Mapped[str] = mapped_column(String(20), nullable=False, server_default="free")
+    color: Mapped[str | None] = mapped_column(String(20), server_default="--cyan")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -281,7 +284,8 @@ class User(Base):
     telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=False)
     username: Mapped[str | None] = mapped_column(String(100))
     full_name: Mapped[str | None] = mapped_column(String(200))
-    display_name: Mapped[str | None] = mapped_column(String(100))  # никнейм, если задан явно
+    display_name: Mapped[str | None] = mapped_column(String(100))  # legacy, больше не редактируется
+    avatar_url: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -324,6 +328,10 @@ class Invite(Base):
     created_by: Mapped[int | None] = mapped_column(BigInteger)
     redeemed_by: Mapped[int | None] = mapped_column(BigInteger)
     redeemed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # telegram_id приглашённого при адресном DM-инвайте (волна 5) — NULL для
+    # обычного шаринг-кода, который никому конкретно не адресован.
+    target_telegram_id: Mapped[int | None] = mapped_column(BigInteger)
+    status: Mapped[str | None] = mapped_column(String(12), server_default="pending")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

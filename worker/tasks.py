@@ -32,6 +32,7 @@ from db.models import (
 )
 from db.session import get_engine, get_sessionmaker
 from shared.config import get_settings
+from shared.attribution import resolve_user_id_by_telegram
 from shared.redact import redact_text
 from shared.tag_normalizer import normalize_tags
 from shared.telegram_throttle import send_message_throttled
@@ -230,6 +231,7 @@ async def _process_one_url(
         status=LinkStatus.fetching,
         source_count=1,
         unique_senders=1,
+        added_by_user_id=await resolve_user_id_by_telegram(session, raw_message.sender_id),
     )
     session.add(link)
     await session.flush()

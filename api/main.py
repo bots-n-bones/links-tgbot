@@ -180,6 +180,7 @@ async def add_link_manual(
     if isinstance(gate, RedirectResponse):
         return gate
     workspace_id = gate
+    current_user = await get_current_user(request)
 
     url = url.strip()
     if not url:
@@ -192,7 +193,7 @@ async def add_link_manual(
                 workspace_id=workspace_id,
                 chat_id=MANUAL_ADD_CHAT_ID,
                 message_id=int(time.time() * 1000),
-                sender_id=None,
+                sender_id=current_user.telegram_id if current_user else None,
                 text=url,
                 entities_json=None,
                 source_type=SourceType.manual,
@@ -1027,6 +1028,7 @@ async def add_post_manual(
     if isinstance(gate, RedirectResponse):
         return gate
     workspace_id = gate
+    current_user = await get_current_user(request)
 
     match = POST_URL_RE.match(url.strip())
     if match is None:
@@ -1046,7 +1048,7 @@ async def add_post_manual(
             "chat_id": chat_id,
             "message_id": int(message_id_str),
             "chat_title": channel,
-            "sender_id": None,
+            "sender_id": current_user.telegram_id if current_user else None,
             "sender_name": None,
             "text": post_text,
             "urls": [],

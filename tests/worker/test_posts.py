@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy import select
 
 import worker.posts as posts_module
-from db.models import Link, LinkStatus, Post
+from db.models import Link, LinkStatus, Post, User
 from shared import config as config_module
 from worker.posts import process_post
 
@@ -36,6 +36,19 @@ async def test_process_post_creates_row_with_classification(db_session, workspac
     assert post.link_ids == []
     await db_session.refresh(post, attribute_names=["tags"])
     assert {t.name for t in post.tags} == {"dev"}
+    assert post.added_by_user_id is None  # sender_id=5 не совпадает ни с одним User
+
+
+async def test_process_post_attributed_to_matching_user(db_session, workspace_id):
+    user = User(telegram_id=5, full_name="Alice")
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+
+    post_id = await process_post(_payload(workspace_id))
+
+    post = await db_session.get(Post, post_id)
+    assert post.added_by_user_id == user.id
 
 
 async def test_process_post_is_idempotent_per_chat_and_message(db_session, workspace_id):

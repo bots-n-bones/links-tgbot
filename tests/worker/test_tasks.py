@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy import select
 
 import worker.tasks as tasks_module
-from db.models import Link, LinkSource, LinkTag, RawMessage, SourceType, Tag
+from db.models import Link, LinkSource, LinkTag, RawMessage, SourceType, Tag, User
 from worker.embeddings import FakeEmbeddingClient
 from worker.fetcher import FetchError, PageMeta
 from worker.llm import FakeLLMClient, TagDescriptionResult
@@ -440,3 +440,46 @@ async def test_get_or_create_tag_scoped_per_workspace(db_session):
     assert tag_a.id != tag_b.id
     tags = (await db_session.execute(select(Tag).where(Tag.name == "ai"))).scalars().all()
     assert len(tags) == 2
+
+
+async def test_new_link_attributed_to_matching_user(db_session, workspace_id, monkeypatch):
+    llm, _ = _patch_clients(monkeypatch)
+    monkeypatch.setattr(tasks_module, "fetch_metadata", _fake_fetch_ok)
+
+    user = User(telegram_id=555, full_name="Someone")
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+
+    rm = await _add_raw_message(
+        db_session,
+        workspace_id,
+        chat_id=1,
+        message_id=1,
+        text="https://example.com/attributed",
+        sender_id=555,
+    )
+    await tasks_module._process_raw_message_async(rm.id)
+
+    link = (await db_session.execute(select(Link))).scalars().one()
+    assert link.added_by_user_id == user.id
+
+
+async def test_new_link_unattributed_when_sender_has_no_account(
+    db_session, workspace_id, monkeypatch
+):
+    llm, _ = _patch_clients(monkeypatch)
+    monkeypatch.setattr(tasks_module, "fetch_metadata", _fake_fetch_ok)
+
+    rm = await _add_raw_message(
+        db_session,
+        workspace_id,
+        chat_id=1,
+        message_id=1,
+        text="https://example.com/unattributed",
+        sender_id=999999,
+    )
+    await tasks_module._process_raw_message_async(rm.id)
+
+    link = (await db_session.execute(select(Link))).scalars().one()
+    assert link.added_by_user_id is None

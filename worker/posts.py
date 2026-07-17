@@ -13,6 +13,7 @@ from sqlalchemy import select
 
 from db.models import Link, Post, PostTag, Tag
 from db.session import get_sessionmaker
+from shared.attribution import resolve_user_id_by_telegram
 from shared.config import get_settings
 from shared.tag_normalizer import normalize_tags
 from shared.telegram_throttle import send_message_throttled
@@ -124,6 +125,7 @@ async def _process_post_inner(payload: dict) -> PostResult:
             link_ids=link_ids,
             embedding=embedding,
             priority_score=compute_priority_score(1, 1, now, now),
+            added_by_user_id=await resolve_user_id_by_telegram(session, payload.get("sender_id")),
         )
         session.add(post)
         await session.flush()
