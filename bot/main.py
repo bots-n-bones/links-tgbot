@@ -8,7 +8,7 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 from aiohttp import web
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
-from bot.handlers import commands, group, private
+from bot.handlers import commands, group, invites, private
 from shared.config import get_settings
 
 logging.basicConfig(level=logging.INFO)
@@ -66,6 +66,7 @@ def create_dispatcher() -> Dispatcher:
     # приватные сообщения уже будут обработаны (фильтры на chat.type это и
     # так гарантируют, но порядок регистрации оставляем явным).
     dp.include_router(commands.router)
+    dp.include_router(invites.router)
     dp.include_router(private.router)
     dp.include_router(group.router)
     return dp

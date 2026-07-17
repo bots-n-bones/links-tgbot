@@ -157,13 +157,24 @@
     {% if is_owner %}
     <div class="card">
       <p class="card-title">Invites</p>
-      <button id="create-invite-btn" class="btn" style="margin-top: 10px;">Create invite code</button>
+      <form id="telegram-invite-form" style="display: flex; gap: 8px; margin-top: 10px;">
+        <input type="text" id="telegram-invite-input" class="input-field" inputmode="numeric"
+               placeholder="Telegram ID" style="max-width: 200px;">
+        <button type="submit" class="btn btn-primary">Invite</button>
+      </form>
+      <p id="telegram-invite-status" class="card-meta" style="margin: 8px 0 0;"></p>
+
+      <button id="create-invite-btn" class="btn" style="margin-top: 14px;">Or create a shareable code</button>
       <p id="invite-status" class="card-meta" style="margin: 8px 0 0;"></p>
       <ul style="margin: 12px 0 0; padding-left: 18px;">
         {% for invite in invites %}
           <li style="margin-bottom: 4px;">
-            <code>{{ invite.code }}</code>
-            {% if invite.redeemed_by %}<span class="card-meta">— redeemed</span>{% else %}<span class="card-meta">— pending</span>{% endif %}
+            {% if invite.target_telegram_id %}
+              <span class="card-meta">Telegram ID {{ invite.target_telegram_id }}</span>
+            {% else %}
+              <code>{{ invite.code }}</code>
+            {% endif %}
+            <span class="card-meta">— {{ invite.status or "pending" }}</span>
           </li>
         {% endfor %}
       </ul>
@@ -222,6 +233,35 @@
           location.reload();
         })
         .catch(function () { status.textContent = "Failed to create invite."; });
+    });
+  }
+
+  var telegramInviteForm = document.getElementById("telegram-invite-form");
+  if (telegramInviteForm) {
+    telegramInviteForm.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var input = document.getElementById("telegram-invite-input");
+      var status = document.getElementById("telegram-invite-status");
+      var targetId = parseInt(input.value, 10);
+      if (!targetId) {
+        status.textContent = "Enter a valid Telegram ID.";
+        return;
+      }
+      fetch("/api/account/invites/by-telegram-id", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target_telegram_id: targetId }),
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data.sent) {
+            status.textContent = "Invite sent — they'll see it in the bot.";
+          } else if (data.fallback) {
+            status.textContent = "They haven't started the bot yet — share this code instead: " + data.code;
+          }
+          location.reload();
+        })
+        .catch(function () { status.textContent = "Failed to send invite."; });
     });
   }
 </script>

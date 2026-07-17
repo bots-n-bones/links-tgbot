@@ -2,11 +2,13 @@ import hashlib
 import hmac
 import time
 
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from sqlalchemy import select
 from starlette.testclient import TestClient
 
+import api.routes.account as account_module
 from api.main import app
-from db.models import User, Workspace, WorkspaceMember, WorkspaceRole
+from db.models import Invite, User, Workspace, WorkspaceMember, WorkspaceRole
 from shared.config import get_settings
 
 TEST_BOT_TOKEN = "999999:test-bot-token-for-account"
@@ -190,3 +192,118 @@ async def test_invite_creation_returns_403_for_member(db_session, monkeypatch):
         resp = client.post("/api/account/invites")
 
     assert resp.status_code == 403
+
+
+async def test_invite_by_telegram_id_sends_dm_with_buttons(db_session, monkeypatch):
+    monkeypatch.setenv("BOT_TOKEN", TEST_BOT_TOKEN)
+    get_settings.cache_clear()
+
+    workspace = Workspace(name="Owner workspace")
+    db_session.add(workspace)
+    await db_session.commit()
+    await db_session.refresh(workspace)
+
+    user = User(telegram_id=777777)
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    db_session.add(
+        WorkspaceMember(workspace_id=workspace.id, user_id=user.id, role=WorkspaceRole.owner)
+    )
+    await db_session.commit()
+
+    sent = []
+
+    async def fake_send(bot, chat_id, text, **kwargs):
+        sent.append((chat_id, text, kwargs.get("reply_markup")))
+
+    monkeypatch.setattr(account_module, "send_message_throttled", fake_send)
+
+    with TestClient(app) as client:
+        _login(client, "777777")
+        resp = client.post("/api/account/invites/by-telegram-id", json={"target_telegram_id": 42})
+
+    assert resp.status_code == 200
+    assert resp.json() == {"sent": True}
+    assert len(sent) == 1
+    assert sent[0][0] == 42
+    assert sent[0][2] is not None  # reply_markup с кнопками
+
+    invite = await db_session.scalar(select(Invite).where(Invite.target_telegram_id == 42))
+    assert invite is not None
+    assert invite.status == "pending"
+
+
+async def test_invite_by_telegram_id_falls_back_to_code_when_bot_forbidden(
+    db_session, monkeypatch
+):
+    monkeypatch.setenv("BOT_TOKEN", TEST_BOT_TOKEN)
+    get_settings.cache_clear()
+
+    workspace = Workspace(name="Owner workspace")
+    db_session.add(workspace)
+    await db_session.commit()
+    await db_session.refresh(workspace)
+
+    user = User(telegram_id=777777)
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    db_session.add(
+        WorkspaceMember(workspace_id=workspace.id, user_id=user.id, role=WorkspaceRole.owner)
+    )
+    await db_session.commit()
+
+    async def fake_send_forbidden(bot, chat_id, text, **kwargs):
+        raise TelegramForbiddenError(method=None, message="Forbidden")
+
+    monkeypatch.setattr(account_module, "send_message_throttled", fake_send_forbidden)
+
+    with TestClient(app) as client:
+        _login(client, "777777")
+        resp = client.post("/api/account/invites/by-telegram-id", json={"target_telegram_id": 43})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["fallback"] is True
+    assert "code" in body
+
+
+async def test_invite_by_telegram_id_falls_back_to_code_when_chat_not_found(
+    db_session, monkeypatch
+):
+    """Несуществующий/опечатанный telegram_id — Telegram отвечает
+    TelegramBadRequest("chat not found"), не Forbidden — тоже должен уйти
+    в fallback, а не 500."""
+    monkeypatch.setenv("BOT_TOKEN", TEST_BOT_TOKEN)
+    get_settings.cache_clear()
+
+    workspace = Workspace(name="Owner workspace")
+    db_session.add(workspace)
+    await db_session.commit()
+    await db_session.refresh(workspace)
+
+    user = User(telegram_id=777777)
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    db_session.add(
+        WorkspaceMember(workspace_id=workspace.id, user_id=user.id, role=WorkspaceRole.owner)
+    )
+    await db_session.commit()
+
+    async def fake_send_bad_request(bot, chat_id, text, **kwargs):
+        raise TelegramBadRequest(method=None, message="Bad Request: chat not found")
+
+    monkeypatch.setattr(account_module, "send_message_throttled", fake_send_bad_request)
+
+    with TestClient(app) as client:
+        _login(client, "777777")
+        resp = client.post(
+            "/api/account/invites/by-telegram-id", json={"target_telegram_id": 123456789}
+        )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["fallback"] is True
+    assert "code" in body

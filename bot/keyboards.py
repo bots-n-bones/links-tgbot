@@ -9,6 +9,24 @@ CB_SEARCH = "menu:search"
 CB_STATS = "menu:stats"
 CB_HELP = "menu:help"
 
+CB_INVITE_ACCEPT_PREFIX = "invite:accept:"
+CB_INVITE_DECLINE_PREFIX = "invite:decline:"
+
+
+def invite_decision_keyboard(invite_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ Accept", callback_data=f"{CB_INVITE_ACCEPT_PREFIX}{invite_id}"
+                ),
+                InlineKeyboardButton(
+                    text="❌ Decline", callback_data=f"{CB_INVITE_DECLINE_PREFIX}{invite_id}"
+                ),
+            ]
+        ]
+    )
+
 
 def main_menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(

@@ -66,6 +66,9 @@ class FakeMessage:
     async def reply(self, text: str, **kwargs) -> None:
         self.sent.append(text)
 
+    async def edit_text(self, text: str, **kwargs) -> None:
+        self.sent.append(text)
+
 
 BOT_FAKE_USER_ID = 0  # callback.message.from_user — это бот, не нажавший кнопку человек
 

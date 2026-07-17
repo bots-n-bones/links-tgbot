@@ -106,6 +106,7 @@ async def redeem_invite(user_id: int, code: str) -> bool:
             return False
         invite.redeemed_by = user_id
         invite.redeemed_at = datetime.now(UTC)
+        invite.status = "accepted"
 
         user = await session.scalar(select(User).where(User.telegram_id == user_id))
         if user is None:
@@ -201,10 +202,65 @@ async def resolve_workspace_id(telegram_id: int) -> int:
     return await get_default_workspace_id()
 
 
-async def create_invite(created_by: int | None, workspace_id: int) -> str:
+async def create_invite(
+    created_by: int | None, workspace_id: int, target_telegram_id: int | None = None
+) -> str:
     code = _generate_code()
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
-        session.add(Invite(code=code, created_by=created_by, workspace_id=workspace_id))
+        session.add(
+            Invite(
+                code=code,
+                created_by=created_by,
+                workspace_id=workspace_id,
+                target_telegram_id=target_telegram_id,
+            )
+        )
         await session.commit()
     return code
+
+
+async def redeem_invite_by_id(invite_id: int, telegram_id: int) -> bool:
+    """Погашает адресный DM-инвайт (волна 5 личного кабинета v2) по id, а не
+    по коду — вызывается из callback-хендлера кнопки "Принять". Проверяет,
+    что accept жмёт именно тот, кому инвайт адресован."""
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        invite = await session.scalar(
+            select(Invite).where(Invite.id == invite_id, Invite.status == "pending")
+        )
+        if invite is None or invite.target_telegram_id != telegram_id:
+            return False
+        invite.redeemed_by = telegram_id
+        invite.redeemed_at = datetime.now(UTC)
+        invite.status = "accepted"
+
+        user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+        if user is None:
+            user = User(telegram_id=telegram_id)
+            session.add(user)
+            await session.flush()
+        existing_membership = await session.scalar(
+            select(WorkspaceMember).where(
+                WorkspaceMember.workspace_id == invite.workspace_id,
+                WorkspaceMember.user_id == user.id,
+            )
+        )
+        if existing_membership is None:
+            session.add(WorkspaceMember(workspace_id=invite.workspace_id, user_id=user.id))
+
+        await session.commit()
+    return True
+
+
+async def decline_invite_by_id(invite_id: int, telegram_id: int) -> bool:
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        invite = await session.scalar(
+            select(Invite).where(Invite.id == invite_id, Invite.status == "pending")
+        )
+        if invite is None or invite.target_telegram_id != telegram_id:
+            return False
+        invite.status = "declined"
+        await session.commit()
+    return True
