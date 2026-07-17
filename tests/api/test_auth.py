@@ -53,6 +53,21 @@ async def test_login_callback_valid_payload_creates_user_and_session(db_session,
     assert user.username == "ada_lovelace"
 
 
+async def test_login_callback_captures_avatar_from_photo_url(db_session, monkeypatch):
+    monkeypatch.setenv("BOT_TOKEN", TEST_BOT_TOKEN)
+    get_settings.cache_clear()
+
+    with TestClient(app) as client:
+        client.get(
+            "/login/callback",
+            params=_signed_payload(photo_url="https://t.me/i/userpic/320/ada.jpg"),
+            follow_redirects=False,
+        )
+
+    user = await db_session.scalar(select(User).where(User.telegram_id == 555555))
+    assert user.avatar_url == "https://t.me/i/userpic/320/ada.jpg"
+
+
 async def test_login_callback_invalid_signature_rejected(db_session, monkeypatch):
     monkeypatch.setenv("BOT_TOKEN", TEST_BOT_TOKEN)
     get_settings.cache_clear()

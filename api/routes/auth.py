@@ -42,17 +42,17 @@ async def login_callback(request: Request):
         user.full_name = " ".join(
             part for part in [payload.get("first_name"), payload.get("last_name")] if part
         )
+        user.avatar_url = payload.get("photo_url")
         await session.commit()
         await session.refresh(user)
         user_id = user.id
 
     request.session["user_id"] = user_id
-    # Кэш никнейма в сессии — чтобы шапка (base.html) не делала отдельный
-    # DB-запрос на каждый рендер; /account обновляет это же поле при смене
-    # никнейма (волна 3).
-    request.session["display_name"] = (
-        user.display_name or user.full_name or user.username or str(user.telegram_id)
-    )
+    # Кэш имени/аватара в сессии — чтобы шапка (base.html) не делала отдельный
+    # DB-запрос на каждый рендер. Имя всегда из Telegram, никнейм больше не
+    # редактируется вручную (личный кабинет v2).
+    request.session["display_name"] = user.full_name or user.username or str(user.telegram_id)
+    request.session["avatar_url"] = user.avatar_url
     return RedirectResponse("/")
 
 
