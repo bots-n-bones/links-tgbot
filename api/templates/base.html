@@ -546,6 +546,7 @@
       .row-actions { width: 100%; }
     }
   </style>
+  {% block extra_head %}{% endblock %}
 </head>
 <body>
   <header class="site-header">
@@ -563,19 +564,21 @@
       <span id="header-search-loading" class="htmx-indicator">Searching…</span>
       <div id="header-search-results" class="header-search-results"></div>
     </div>
+    {% if request.session.get("user_id") %}
     <nav class="site-nav">
       <a href="/" class="{{ 'active' if request.url.path == '/' else '' }}">Links</a>
       <a href="/posts" class="{{ 'active' if request.url.path.startswith('/posts') else '' }}">Posts</a>
       <a href="/channels" class="{{ 'active' if request.url.path.startswith('/channels') else '' }}">Channels</a>
       <a href="/digest" class="{{ 'active' if request.url.path.startswith('/digest') else '' }}">Digest</a>
     </nav>
+    {% endif %}
     <div class="site-auth">
       {% if request.session.get("user_id") %}
         <a href="/account" class="{{ 'active' if request.url.path.startswith('/account') else '' }}">{{ request.session.get("display_name") }}</a>
         <form method="post" action="/logout" style="display: inline;">
           <button type="submit" class="btn">Log out</button>
         </form>
-      {% else %}
+      {% elif request.url.path != '/login' %}
         <a href="/login" class="btn btn-primary">Log in</a>
       {% endif %}
     </div>

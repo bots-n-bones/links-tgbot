@@ -1,22 +1,326 @@
 {% extends "base.html" %}
-{% block title %}Log in — Nova-260{% endblock %}
-{% block content %}
-<div class="eyebrow">Account</div>
-<h1>Log in</h1>
-<p class="card-meta" style="margin-bottom: 20px;">Sign in with the same Telegram account you use with the bot.</p>
+{% block title %}Nova-260 — Welcome{% endblock %}
 
-<div class="card" style="max-width: 360px;">
-  {% if bot_username %}
-    <script
-      async
-      src="https://telegram.org/js/telegram-widget.js?22"
-      data-telegram-login="{{ bot_username }}"
-      data-size="large"
-      data-auth-url="/login/callback"
-      data-request-access="write">
-    </script>
-  {% else %}
-    <p class="card-meta">BOT_USERNAME is not configured — the login widget can't render.</p>
-  {% endif %}
+{% block extra_head %}
+<style>
+  /* --- Animated aurora background, scoped to the hero section only ---
+     Soft edges come from the radial-gradient itself (transparent at 70%),
+     not a blur filter — filter:blur() on huge elements is very expensive to
+     repaint every frame. Positioned absolute inside .hero-stage (scrolls
+     away with the page) rather than fixed to the viewport — full-page fixed
+     backgrounds are a common source of cross-browser repaint quirks. */
+  .hero-stage {
+    position: relative;
+    overflow: hidden;
+  }
+  .aurora {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .aurora-blob {
+    position: absolute;
+    width: 60vmax;
+    height: 60vmax;
+    border-radius: 50%;
+    opacity: 0.28;
+    will-change: transform;
+    transform: translateZ(0);
+  }
+  .aurora-blob-1 {
+    top: -20vmax;
+    left: -14vmax;
+    background: radial-gradient(circle, var(--accent) 0%, transparent 68%);
+    animation: aurora-drift-1 24s ease-in-out infinite alternate;
+  }
+  .aurora-blob-2 {
+    bottom: -24vmax;
+    right: -16vmax;
+    background: radial-gradient(circle, var(--cyan) 0%, transparent 68%);
+    animation: aurora-drift-2 28s ease-in-out infinite alternate;
+  }
+  .aurora-blob-3 {
+    top: 24vh;
+    right: 4vw;
+    width: 46vmax;
+    height: 46vmax;
+    opacity: 0.18;
+    background: radial-gradient(circle, var(--lilac) 0%, transparent 68%);
+    animation: aurora-drift-3 32s ease-in-out infinite alternate;
+  }
+  @keyframes aurora-drift-1 {
+    0%   { transform: translate(0, 0) scale(1); }
+    100% { transform: translate(8vw, 10vh) scale(1.12); }
+  }
+  @keyframes aurora-drift-2 {
+    0%   { transform: translate(0, 0) scale(1); }
+    100% { transform: translate(-6vw, -8vh) scale(1.08); }
+  }
+  @keyframes aurora-drift-3 {
+    0%   { transform: translate(0, 0) scale(1); }
+    100% { transform: translate(-5vw, 6vh) scale(0.94); }
+  }
+  .aurora-grid {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      radial-gradient(circle, rgba(244, 242, 236, 0.09) 1px, transparent 1px);
+    background-size: 28px 28px;
+    -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 20%, #000 40%, transparent 100%);
+            mask-image: radial-gradient(ellipse 70% 60% at 50% 20%, #000 40%, transparent 100%);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .aurora-blob { animation: none !important; }
+  }
+
+  /* --- Hero --- */
+  .hero {
+    position: relative;
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 9vh 0 40px;
+    text-align: center;
+  }
+  .hero-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin-bottom: 18px;
+  }
+  .hero h1 {
+    font-size: clamp(40px, 7vw, 64px);
+    letter-spacing: -1.5px;
+    margin-bottom: 18px;
+    min-height: 1.15em;
+  }
+  .typewriter-cursor {
+    display: inline-block;
+    width: 3px;
+    margin-left: 3px;
+    background: var(--accent);
+    animation: cursor-blink 900ms step-end infinite;
+    vertical-align: -0.1em;
+  }
+  @keyframes cursor-blink {
+    0%, 50% { opacity: 1; }
+    50.01%, 100% { opacity: 0; }
+  }
+  .hero p.hero-sub {
+    font-size: 17px;
+    color: var(--text-muted);
+    line-height: 1.6;
+    max-width: 560px;
+    margin: 0 auto;
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  .hero p.hero-sub.visible {
+    animation: fade-up 600ms ease forwards;
+  }
+  @keyframes fade-up {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* --- Feature cards --- */
+  .feature-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px;
+    max-width: 920px;
+    margin: 56px auto 0;
+  }
+  .feature-card {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 22px 20px;
+    text-align: left;
+    opacity: 0;
+    transform: translateY(14px);
+    animation: fade-up 560ms ease forwards;
+    animation-delay: var(--delay, 0ms);
+    transition: border-color 160ms ease, background 160ms ease;
+  }
+  .feature-card:hover {
+    border-color: var(--border-strong);
+    background: var(--bg-elevated-hover);
+  }
+  .feature-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-md);
+    background: var(--ghost);
+    font-size: 17px;
+    margin-bottom: 14px;
+  }
+  .feature-card h3 {
+    font-size: 15px;
+    margin-bottom: 6px;
+  }
+  .feature-card p {
+    font-size: 13px;
+    color: var(--text-muted);
+    line-height: 1.55;
+    margin: 0;
+  }
+
+  /* --- CTA card --- */
+  .cta-wrap {
+    display: flex;
+    justify-content: center;
+    margin: 56px auto 0;
+  }
+  .cta-card {
+    width: min(380px, 100%);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-lg);
+    padding: 28px 26px 26px;
+    text-align: center;
+    opacity: 0;
+    transform: translateY(14px);
+    animation: fade-up 560ms ease forwards;
+    animation-delay: 480ms;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  }
+  .cta-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #2aabee, #229ed9);
+    margin-bottom: 16px;
+  }
+  .cta-card h2 {
+    font-size: 18px;
+    margin-bottom: 6px;
+  }
+  .cta-card .cta-sub {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin: 0 0 20px;
+    line-height: 1.5;
+  }
+  .telegram-widget-wrap {
+    display: flex;
+    justify-content: center;
+    min-height: 40px;
+  }
+  .cta-fallback {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--yellow);
+    border: 1px dashed var(--yellow);
+    border-radius: var(--radius-md);
+    padding: 10px 14px;
+    line-height: 1.5;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="hero-stage">
+  <div class="aurora" aria-hidden="true">
+    <div class="aurora-blob aurora-blob-1"></div>
+    <div class="aurora-blob aurora-blob-2"></div>
+    <div class="aurora-blob aurora-blob-3"></div>
+  </div>
+  <div class="aurora-grid" aria-hidden="true"></div>
+
+  <section class="hero">
+    <div class="hero-eyebrow">Team link collector</div>
+    <h1><span id="typewriter"></span><span class="typewriter-cursor">&nbsp;</span></h1>
+    <p class="hero-sub" id="hero-sub">
+      Nova-260 turns every link your team drops in Telegram into a searchable,
+      tagged, ranked library — plus channel style reports, digests, and a
+      RAG assistant that already knows what you've saved.
+    </p>
+  </section>
 </div>
+
+<div class="feature-grid">
+  <div class="feature-card" style="--delay: 80ms">
+    <div class="feature-icon">🔗</div>
+    <h3>Auto-captured links</h3>
+    <p>Drop a link in any tracked chat — the bot fetches, describes, tags, and dedupes it into one shared library.</p>
+  </div>
+  <div class="feature-card" style="--delay: 160ms">
+    <div class="feature-icon">🧬</div>
+    <h3>Voice DNA reports</h3>
+    <p>Parse any public channel and get a deep style, structure, and tone analysis — built from real post data.</p>
+  </div>
+  <div class="feature-card" style="--delay: 240ms">
+    <div class="feature-icon">🗞</div>
+    <h3>Daily &amp; weekly digests</h3>
+    <p>Fresh picks matched to your team's usual quality bar, collected automatically on a schedule.</p>
+  </div>
+  <div class="feature-card" style="--delay: 320ms">
+    <div class="feature-icon">💬</div>
+    <h3>Ask your knowledge base</h3>
+    <p>Search everything the team has saved with a RAG assistant that cites its sources, not just guesses.</p>
+  </div>
+</div>
+
+<div class="cta-wrap">
+  <div class="cta-card">
+    <div class="cta-icon" aria-hidden="true">
+      <svg width="22" height="22" viewBox="0 0 240 240" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M170.6 67.9 55.3 112.7c-7.9 3.2-7.8 7.6-1.4 9.5l29.6 9.2 68.6-43.3c3.2-2 6.2-.9 3.8 1.3l-55.6 50.2h-.1l2 30.9c2.9 0 4.2-1.3 5.8-2.9l14-13.6 29 21.4c5.3 2.9 9.1 1.4 10.5-5l19-89.5c2-7.8-3-11.3-9-8.5Z" fill="#fff"/>
+      </svg>
+    </div>
+    <h2>Log in with Telegram</h2>
+    <p class="cta-sub">Use the same account you already use with the bot.</p>
+    {% if bot_username %}
+      <div class="telegram-widget-wrap">
+        <script
+          async
+          src="https://telegram.org/js/telegram-widget.js?22"
+          data-telegram-login="{{ bot_username }}"
+          data-size="large"
+          data-radius="20"
+          data-auth-url="/login/callback"
+          data-request-access="write">
+        </script>
+      </div>
+    {% else %}
+      <p class="cta-fallback">BOT_USERNAME is not configured — the login widget can't render.</p>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+  (function () {
+    var text = "Welcome";
+    var el = document.getElementById("typewriter");
+    var sub = document.getElementById("hero-sub");
+    var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    if (reduceMotion) {
+      el.textContent = text;
+      sub.classList.add("visible");
+      return;
+    }
+
+    var i = 0;
+    function tick() {
+      if (i <= text.length) {
+        el.textContent = text.slice(0, i);
+        i++;
+        setTimeout(tick, 70);
+      } else {
+        sub.classList.add("visible");
+      }
+    }
+    tick();
+  })();
+</script>
 {% endblock %}
