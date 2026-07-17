@@ -48,10 +48,10 @@ Python 3.12, aiogram 3, FastAPI + Jinja2 + HTMX, Celery + Redis, PostgreSQL 16
   (страница `/login` покажет заглушку "BOT_USERNAME is not configured" или
   просто не даст войти). Обязательно на **проде** — на localhost виджет
   Telegram не работает в принципе (нужен настоящий домен).
-- Basic Auth в nginx (`.htpasswd`) и сессионный логин — независимые слои:
-  Basic Auth остаётся грубым внешним фильтром (защита от случайных
-  сканеров), сессия отвечает за то, чьи данные показывать внутри
-  приложения. Не конфликтуют, снимать Basic Auth не обязательно.
+- Единственный слой доступа на проде — сессионный логин: nginx Basic Auth
+  снят (дублировал тот же контроль отдельным паролем, только неудобнее) —
+  весь дашборд закрыт `Depends(get_current_workspace_id)` (волна 4 плана),
+  открыты только `/health`, `/changelog` и `/telegram/webhook`.
 - Бутстрап: первый `ADMIN_USER_ID` автоматически становится owner'ом
   дефолтного workspace при накатке миграции `c1d2e3f4a5b6` — с него можно
   выдавать инвайты (`/invite` в боте или кнопка в `/account`) новым
@@ -82,11 +82,10 @@ platform.openai.com/api-keys.
    (A-запись → IP VPS).
 2. На сервере: `git clone`, создать `.env` из `.env.example` (реальные
    ключи, `DASHBOARD_URL=https://ваш-домен`).
-3. `htpasswd -c nginx/.htpasswd admin` (пакет `apache2-utils`).
-4. Поднять с overlay'ем nginx-контейнера (публикует 80/443, монтирует
-   `nginx/nginx.conf` + `.htpasswd`):
+3. Поднять с overlay'ем nginx-контейнера (публикует 80/443, монтирует
+   `nginx/nginx.conf`):
    `docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.nginx.yml up -d --build`.
-5. Выпустить сертификат: `certbot certonly --webroot -w /var/www/certbot -d ваш-домен`,
+4. Выпустить сертификат: `certbot certonly --webroot -w /var/www/certbot -d ваш-домен`,
    раскомментировать `server { listen 443 ssl; ... }` в `nginx/nginx.conf`,
    перезапустить nginx-контейнер.
 
@@ -106,22 +105,20 @@ platform.openai.com/api-keys.
 3. `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`
    — поднимет `db`/`redis`/`worker`/`beat`/`api`/`bot`, **без** отдельного
    nginx-сервиса (закомментирован/отсутствует в этом overlay).
-4. `htpasswd -c /etc/nginx/.htpasswd-bnblinks admin`.
-5. Скопировать `nginx/bnblinks.conf` в `/etc/nginx/sites-available/`,
+4. Скопировать `nginx/bnblinks.conf` в `/etc/nginx/sites-available/`,
    поправить домен/порты под себя, включить:
    `ln -s /etc/nginx/sites-available/bnblinks.conf /etc/nginx/sites-enabled/`.
-6. Выпустить сертификат (не трогая существующие сайты):
+5. Выпустить сертификат (не трогая существующие сайты):
    `certbot certonly --nginx -d ваш-домен`.
-7. `nginx -t && systemctl reload nginx`.
-8. Применить миграции внутри контейнера:
+6. `nginx -t && systemctl reload nginx`.
+7. Применить миграции внутри контейнера:
    `docker compose -f docker-compose.yml -f docker-compose.prod.yml exec api alembic -c db/alembic.ini upgrade head`.
-9. Проверить: `curl https://ваш-домен/health` → `{"status":"ok"}`,
-   `/telegram/webhook` доступен без Basic Auth, `/` спрашивает пароль.
-10. Личный кабинет: `/setdomain` в BotFather на этот домен (см. раздел
-    "Личный кабинет" выше), зайти на `/login`, проверить, что виджет
-    рендерится и логин работает — после волны 4 плана "Личный кабинет +
-    workspace" весь дашборд требует логина.
-11. Пройти чек-лист приёмки — TZ.md §16.
+8. Проверить: `curl https://ваш-домен/health` → `{"status":"ok"}`,
+   `/telegram/webhook` отвечает, `/` редиректит на `/login` (единственный
+   слой доступа — сессионный логин, см. раздел "Личный кабинет" выше).
+9. Личный кабинет: `/setdomain` в BotFather на этот домен, зайти на
+   `/login`, проверить, что виджет рендерится и логин работает.
+10. Пройти чек-лист приёмки — TZ.md §16.
 
 ### Что уже сделано в коде для деплоя
 
