@@ -19,6 +19,7 @@ from api.routes import account as account_routes
 from api.routes import ask, auth, collections, links, research
 from api.routes import channels as channels_routes
 from api.routes import posts as posts_routes
+from api.routes import workspace as workspace_routes
 from api.routes.links import (
     get_link_detail,
     list_all_tags,
@@ -67,6 +68,7 @@ app.include_router(ask.router)
 app.include_router(channels_routes.router)
 app.include_router(auth.router)
 app.include_router(account_routes.router)
+app.include_router(workspace_routes.router)
 
 
 def _require_workspace(workspace_id: int | None) -> int | RedirectResponse:

@@ -49,3 +49,4 @@ templates.env.globals["area_color"] = area_color
 templates.env.globals["clicks_label"] = clicks_label
 templates.env.globals["current_version"] = CURRENT_VERSION
 templates.env.globals["area_choices"] = AREA_CHOICES
+templates.env.globals["swatch_colors"] = _TAG_COLOR_VARS

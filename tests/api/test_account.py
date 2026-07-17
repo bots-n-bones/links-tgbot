@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import time
 
+from sqlalchemy import select
 from starlette.testclient import TestClient
 
 from api.main import app
@@ -45,19 +46,99 @@ async def test_account_page_redirects_when_not_logged_in(db_session, monkeypatch
     assert resp.headers["location"] == "/login"
 
 
-async def test_nickname_updates_for_logged_in_user(db_session, monkeypatch):
+async def test_account_page_shows_read_only_telegram_name(db_session, monkeypatch):
     monkeypatch.setenv("BOT_TOKEN", TEST_BOT_TOKEN)
     get_settings.cache_clear()
 
     with TestClient(app) as client:
         _login(client, "777777")
-
-        resp = client.patch("/api/account/nickname", json={"display_name": "Ada"})
-        assert resp.status_code == 200
-        assert resp.json()["display_name"] == "Ada"
-
         account_page = client.get("/account")
-        assert "Ada" in account_page.text
+
+    assert "Grace" in account_page.text
+    assert "@grace_hopper" in account_page.text
+    assert "nickname" not in account_page.text.lower()
+
+
+async def test_nickname_endpoint_removed(db_session, monkeypatch):
+    monkeypatch.setenv("BOT_TOKEN", TEST_BOT_TOKEN)
+    get_settings.cache_clear()
+
+    with TestClient(app) as client:
+        _login(client, "777777")
+        resp = client.patch("/api/account/nickname", json={"display_name": "Ada"})
+
+    assert resp.status_code == 404
+
+
+async def test_create_team_for_workspace_less_user(db_session, monkeypatch):
+    monkeypatch.setenv("BOT_TOKEN", TEST_BOT_TOKEN)
+    get_settings.cache_clear()
+
+    with TestClient(app) as client:
+        _login(client, "777777")
+        resp = client.post("/api/workspace", json={"name": "New Team", "color": "--cyan"})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["name"] == "New Team"
+    assert body["color"] == "--cyan"
+
+    user = await db_session.scalar(select(User).where(User.telegram_id == 777777))
+    membership = await db_session.scalar(
+        select(WorkspaceMember).where(WorkspaceMember.user_id == user.id)
+    )
+    assert membership is not None
+    assert membership.role == WorkspaceRole.owner
+
+
+async def test_rename_team_requires_owner(db_session, monkeypatch):
+    monkeypatch.setenv("BOT_TOKEN", TEST_BOT_TOKEN)
+    get_settings.cache_clear()
+
+    workspace = Workspace(name="Old name", color="--cyan")
+    db_session.add(workspace)
+    await db_session.commit()
+    await db_session.refresh(workspace)
+
+    user = User(telegram_id=777777)
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    db_session.add(
+        WorkspaceMember(workspace_id=workspace.id, user_id=user.id, role=WorkspaceRole.member)
+    )
+    await db_session.commit()
+
+    with TestClient(app) as client:
+        _login(client, "777777")
+        resp = client.post("/api/workspace", json={"name": "New name", "color": "--green"})
+
+    assert resp.status_code == 403
+
+
+async def test_rename_team_rejects_invalid_color(db_session, monkeypatch):
+    monkeypatch.setenv("BOT_TOKEN", TEST_BOT_TOKEN)
+    get_settings.cache_clear()
+
+    workspace = Workspace(name="Old name", color="--cyan")
+    db_session.add(workspace)
+    await db_session.commit()
+    await db_session.refresh(workspace)
+
+    user = User(telegram_id=777777)
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    db_session.add(
+        WorkspaceMember(workspace_id=workspace.id, user_id=user.id, role=WorkspaceRole.owner)
+    )
+    await db_session.commit()
+
+    with TestClient(app) as client:
+        _login(client, "777777")
+        resp = client.post("/api/workspace", json={"name": "New name", "color": "#ff00ff"})
+
+    assert resp.status_code == 422
 
 
 async def test_invite_creation_succeeds_for_owner(db_session, monkeypatch):

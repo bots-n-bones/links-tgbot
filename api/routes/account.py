@@ -15,29 +15,6 @@ from worker.channel_scraper import normalize_channel_username
 router = APIRouter(prefix="/api/account", tags=["account"])
 
 
-class NicknameIn(BaseModel):
-    display_name: str
-
-
-@router.patch("/nickname")
-async def update_nickname(request: Request, body: NicknameIn):
-    user = await get_current_user(request)
-    if user is None:
-        raise HTTPException(status_code=401, detail="Not logged in")
-
-    display_name = body.display_name.strip()[:100] or None
-    sessionmaker = get_sessionmaker()
-    async with sessionmaker() as session:
-        db_user = await session.get(type(user), user.id)
-        db_user.display_name = display_name
-        await session.commit()
-
-    request.session["display_name"] = (
-        display_name or user.full_name or user.username or str(user.telegram_id)
-    )
-    return {"display_name": request.session["display_name"]}
-
-
 @router.post("/invites")
 async def create_account_invite(request: Request):
     user = await get_current_user(request)

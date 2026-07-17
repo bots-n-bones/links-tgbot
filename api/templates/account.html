@@ -1,72 +1,215 @@
 {% extends "base.html" %}
 {% block title %}Account — Nova-260{% endblock %}
+{% block extra_head %}
+<style>
+  .account-tabs-wrap { max-width: 640px; }
+  .tab-radio { position: absolute; opacity: 0; pointer-events: none; }
+  .account-tabs {
+    display: inline-flex;
+    gap: 2px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    padding: 3px;
+    margin-bottom: 20px;
+  }
+  .account-tabs label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-muted);
+    padding: 8px 16px;
+    border-radius: var(--radius-pill);
+    cursor: pointer;
+    transition: background 120ms ease, color 120ms ease;
+  }
+  .account-tabs label:hover { color: var(--text); }
+  .tab-panel { display: none; }
+  #tab-profile:checked ~ #panel-profile,
+  #tab-team:checked ~ #panel-team,
+  #tab-stats:checked ~ #panel-stats,
+  #tab-sub:checked ~ #panel-sub { display: block; }
+  #tab-profile:checked ~ .account-tabs label[for="tab-profile"],
+  #tab-team:checked ~ .account-tabs label[for="tab-team"],
+  #tab-stats:checked ~ .account-tabs label[for="tab-stats"],
+  #tab-sub:checked ~ .account-tabs label[for="tab-sub"] {
+    background: var(--text);
+    color: var(--ink);
+  }
+
+  .profile-row { display: flex; align-items: center; gap: 14px; }
+  .profile-avatar { width: 56px; height: 56px; border-radius: var(--radius-pill); object-fit: cover; }
+  .profile-avatar-fallback {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    border-radius: var(--radius-pill);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    font-family: var(--font-display);
+    font-size: 22px;
+  }
+  .profile-name { font-family: var(--font-display); font-size: 18px; }
+  .profile-meta { font-family: var(--font-mono); font-size: 12px; color: var(--text-faint); margin-top: 4px; }
+
+  .swatch-picker { display: flex; gap: 8px; margin: 10px 0; }
+  .swatch-option { position: relative; }
+  .swatch-option input { position: absolute; opacity: 0; pointer-events: none; }
+  .swatch-option span {
+    display: block;
+    width: 26px;
+    height: 26px;
+    border-radius: var(--radius-pill);
+    background: var(--swatch-color);
+    border: 2px solid transparent;
+    cursor: pointer;
+  }
+  .swatch-option input:checked + span { border-color: var(--text); }
+
+  .team-color-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: var(--radius-pill);
+    margin-right: 6px;
+  }
+</style>
+{% endblock %}
 {% block content %}
 <div class="eyebrow">Account</div>
 <h1>Account</h1>
 
-<div class="card" style="max-width: 480px; margin-bottom: 16px;">
-  <p class="card-title">Nickname</p>
-  <form id="nickname-form" style="display: flex; gap: 8px; margin-top: 10px;">
-    <input type="text" id="nickname-input" class="input-field" maxlength="100"
-           value="{{ account_user.display_name or account_user.full_name or account_user.username or '' }}"
-           placeholder="How should we call you?">
-    <button type="submit" class="btn btn-primary">Save</button>
-  </form>
-  <p id="nickname-status" class="card-meta" style="margin: 8px 0 0;"></p>
-</div>
+<div class="account-tabs-wrap">
+  <input type="radio" name="account-tab" id="tab-profile" class="tab-radio" checked>
+  <input type="radio" name="account-tab" id="tab-team" class="tab-radio">
+  <input type="radio" name="account-tab" id="tab-stats" class="tab-radio">
+  <input type="radio" name="account-tab" id="tab-sub" class="tab-radio">
 
-<div class="card" style="max-width: 480px; margin-bottom: 16px;">
-  <p class="card-title">Workspace</p>
-  {% if workspace %}
-    <p class="card-meta" style="margin: 6px 0 12px;">{{ workspace.name }} · {{ workspace.plan }} plan</p>
-    <ul style="margin: 0; padding-left: 18px;">
-      {% for member in members %}
-        <li style="margin-bottom: 4px;">{{ member.display_name }} <span class="card-meta">({{ member.role }})</span></li>
-      {% endfor %}
-    </ul>
-  {% else %}
-    <p class="card-meta">You're not a member of any workspace yet.</p>
-  {% endif %}
-</div>
+  <div class="account-tabs">
+    <label for="tab-profile">Profile</label>
+    <label for="tab-team">Team</label>
+    <label for="tab-stats">Stats</label>
+    <label for="tab-sub">Subscription</label>
+  </div>
 
-{% if is_owner %}
-<div class="card" style="max-width: 480px; margin-bottom: 16px;">
-  <p class="card-title">Invites</p>
-  <button id="create-invite-btn" class="btn" style="margin-top: 10px;">Create invite code</button>
-  <p id="invite-status" class="card-meta" style="margin: 8px 0 0;"></p>
-  <ul style="margin: 12px 0 0; padding-left: 18px;">
-    {% for invite in invites %}
-      <li style="margin-bottom: 4px;">
-        <code>{{ invite.code }}</code>
-        {% if invite.redeemed_by %}<span class="card-meta">— redeemed</span>{% else %}<span class="card-meta">— pending</span>{% endif %}
-      </li>
-    {% endfor %}
-  </ul>
-</div>
-{% endif %}
+  <div class="tab-panel" id="panel-profile">
+    <div class="card">
+      <div class="profile-row">
+        {% if account_user.avatar_url %}
+          <img class="profile-avatar" src="{{ account_user.avatar_url }}" alt="" referrerpolicy="no-referrer">
+        {% else %}
+          <span class="profile-avatar-fallback">{{ (account_user.full_name or account_user.username or "?")[0]|upper }}</span>
+        {% endif %}
+        <div>
+          <div class="profile-name">{{ account_user.full_name or account_user.username or account_user.telegram_id }}</div>
+          {% if account_user.username %}<div class="profile-meta">@{{ account_user.username }}</div>{% endif %}
+          <div class="profile-meta">Telegram ID: {{ account_user.telegram_id }}</div>
+        </div>
+      </div>
+      <p class="card-meta" style="margin-top: 14px;">Your name and photo come from Telegram and can't be edited here — update them in the Telegram app instead.</p>
+    </div>
+  </div>
 
-<div class="card" style="max-width: 480px;">
-  <p class="card-title">Subscription</p>
-  <p class="card-meta" style="margin: 6px 0 0;">Coming soon.</p>
+  <div class="tab-panel" id="panel-team">
+    <div class="card" style="margin-bottom: 16px;">
+      {% if workspace %}
+        <p class="card-title">
+          <span class="team-color-dot" style="background: var({{ workspace.color or '--cyan' }});"></span>{{ workspace.name }}
+        </p>
+        <p class="card-meta">{{ workspace.plan }} plan</p>
+      {% else %}
+        <p class="card-title">Create a team</p>
+        <p class="card-meta">You're not part of a team yet — create one to start collecting links together.</p>
+      {% endif %}
+
+      {% if is_owner or not workspace %}
+      <form id="team-form" style="margin-top: 10px;">
+        <input type="text" id="team-name-input" class="input-field" maxlength="200"
+               value="{{ workspace.name if workspace else '' }}"
+               placeholder="Team name" style="width: 100%; margin-bottom: 10px;">
+        <div class="swatch-picker">
+          {% for color in swatch_colors %}
+            <label class="swatch-option">
+              <input type="radio" name="team-color" value="{{ color }}"
+                     {% if (workspace.color if workspace else '--cyan') == color %}checked{% endif %}>
+              <span style="--swatch-color: var({{ color }});"></span>
+            </label>
+          {% endfor %}
+        </div>
+        <button type="submit" class="btn btn-primary">{{ "Save" if workspace else "Create team" }}</button>
+        <span id="team-status" class="card-meta"></span>
+      </form>
+      {% endif %}
+    </div>
+
+    {% if workspace %}
+    <div class="card" style="margin-bottom: 16px;">
+      <p class="card-title">Members</p>
+      <ul style="margin: 10px 0 0; padding-left: 18px;">
+        {% for member in members %}
+          <li style="margin-bottom: 4px;">{{ member.display_name }} <span class="card-meta">({{ member.role }})</span></li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    {% if is_owner %}
+    <div class="card">
+      <p class="card-title">Invites</p>
+      <button id="create-invite-btn" class="btn" style="margin-top: 10px;">Create invite code</button>
+      <p id="invite-status" class="card-meta" style="margin: 8px 0 0;"></p>
+      <ul style="margin: 12px 0 0; padding-left: 18px;">
+        {% for invite in invites %}
+          <li style="margin-bottom: 4px;">
+            <code>{{ invite.code }}</code>
+            {% if invite.redeemed_by %}<span class="card-meta">— redeemed</span>{% else %}<span class="card-meta">— pending</span>{% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="tab-panel" id="panel-stats">
+    <div class="card">
+      <p class="card-title">Statistics</p>
+      <p class="card-meta" style="margin-top: 6px;">Coming soon.</p>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="panel-sub">
+    <div class="card">
+      <p class="card-title">Subscription</p>
+      <p class="card-meta" style="margin-top: 6px;">Coming soon.</p>
+    </div>
+  </div>
 </div>
 
 <script>
-  document.getElementById("nickname-form").addEventListener("submit", function (e) {
-    e.preventDefault();
-    var input = document.getElementById("nickname-input");
-    var status = document.getElementById("nickname-status");
-    fetch("/api/account/nickname", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ display_name: input.value }),
-    })
-      .then(function (r) { return r.json(); })
-      .then(function () {
-        status.textContent = "Saved.";
-        location.reload();
+  var teamForm = document.getElementById("team-form");
+  if (teamForm) {
+    teamForm.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var name = document.getElementById("team-name-input").value;
+      var colorInput = document.querySelector('input[name="team-color"]:checked');
+      var status = document.getElementById("team-status");
+      fetch("/api/workspace", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name, color: colorInput ? colorInput.value : "--cyan" }),
       })
-      .catch(function () { status.textContent = "Failed to save."; });
-  });
+        .then(function (r) {
+          if (!r.ok) throw new Error("failed");
+          return r.json();
+        })
+        .then(function () {
+          status.textContent = "Saved.";
+          location.reload();
+        })
+        .catch(function () { status.textContent = "Failed to save."; });
+    });
+  }
 
   var inviteBtn = document.getElementById("create-invite-btn");
   if (inviteBtn) {
