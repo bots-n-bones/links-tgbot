@@ -143,6 +143,24 @@
     .site-auth { display: flex; align-items: center; gap: 8px; margin-left: 16px; }
     .site-auth a { font-size: 13px; color: var(--text-muted); text-decoration: none; }
     .site-auth a:hover, .site-auth a.active { color: var(--text); }
+    .site-auth-link { display: flex; align-items: center; gap: 6px; }
+    .site-avatar {
+      width: 22px;
+      height: 22px;
+      border-radius: var(--radius-pill);
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+    .site-avatar-fallback {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: var(--font-display);
+      font-size: 11px;
+    }
 
     .eyebrow {
       font-family: var(--font-mono);
@@ -574,7 +592,15 @@
     {% endif %}
     <div class="site-auth">
       {% if request.session.get("user_id") %}
-        <a href="/account" class="{{ 'active' if request.url.path.startswith('/account') else '' }}">{{ request.session.get("display_name") }}</a>
+        <a href="/account" class="site-auth-link {{ 'active' if request.url.path.startswith('/account') else '' }}">
+          {% set avatar_url = request.session.get("avatar_url") %}
+          {% if avatar_url %}
+            <img class="site-avatar" src="{{ avatar_url }}" alt="" referrerpolicy="no-referrer">
+          {% else %}
+            <span class="site-avatar site-avatar-fallback">{{ (request.session.get("display_name") or "?")[0]|upper }}</span>
+          {% endif %}
+          <span>{{ request.session.get("display_name") }}</span>
+        </a>
         <form method="post" action="/logout" style="display: inline;">
           <button type="submit" class="btn">Log out</button>
         </form>
