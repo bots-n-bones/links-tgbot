@@ -955,6 +955,37 @@ async def account_page(request: Request):
                 .all()
             )
 
+        stats = {
+            "links_added": await session.scalar(
+                select(func.count())
+                .select_from(Link)
+                .where(
+                    Link.workspace_id == (workspace.id if workspace else -1),
+                    Link.added_by_user_id == user.id,
+                )
+            )
+            or 0,
+            "posts_added": await session.scalar(
+                select(func.count())
+                .select_from(Post)
+                .where(
+                    Post.workspace_id == (workspace.id if workspace else -1),
+                    Post.added_by_user_id == user.id,
+                )
+            )
+            or 0,
+            "channel_parses": await session.scalar(
+                select(func.count())
+                .select_from(ChannelParseJob)
+                .where(ChannelParseJob.requested_by_user_id == user.id)
+            )
+            or 0,
+            "watchlist_size": await session.scalar(
+                select(func.count()).select_from(ChannelWatch).where(ChannelWatch.user_id == user.id)
+            )
+            or 0,
+        }
+
     is_owner = membership is not None and membership.role.value == "owner"
     return templates.TemplateResponse(
         request,
@@ -965,6 +996,7 @@ async def account_page(request: Request):
             "members": members,
             "invites": invites,
             "is_owner": is_owner,
+            "stats": stats,
         },
     )
 

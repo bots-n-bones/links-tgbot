@@ -74,6 +74,15 @@
     border-radius: var(--radius-pill);
     margin-right: 6px;
   }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+  .stat-card { text-align: left; }
+  .stat-value { font-family: var(--font-display); font-size: 28px; }
+  .stat-label { font-family: var(--font-mono); font-size: 11px; color: var(--text-faint); margin-top: 4px; }
 </style>
 {% endblock %}
 {% block content %}
@@ -183,10 +192,25 @@
   </div>
 
   <div class="tab-panel" id="panel-stats">
-    <div class="card">
-      <p class="card-title">Statistics</p>
-      <p class="card-meta" style="margin-top: 6px;">Coming soon.</p>
+    <div class="stats-grid">
+      <div class="card stat-card">
+        <div class="stat-value">{{ stats.links_added }}</div>
+        <div class="stat-label">Links added</div>
+      </div>
+      <div class="card stat-card">
+        <div class="stat-value">{{ stats.posts_added }}</div>
+        <div class="stat-label">Posts added</div>
+      </div>
+      <div class="card stat-card">
+        <div class="stat-value">{{ stats.channel_parses }}</div>
+        <div class="stat-label">Channel parses run</div>
+      </div>
+      <div class="card stat-card">
+        <div class="stat-value">{{ stats.watchlist_size }}</div>
+        <div class="stat-label">Channels watched</div>
+      </div>
     </div>
+    <p class="card-meta" style="margin-top: 14px;">Links and posts count only what was added since attribution tracking launched — older items aren't included.</p>
   </div>
 
   <div class="tab-panel" id="panel-sub">

@@ -8,7 +8,18 @@ from starlette.testclient import TestClient
 
 import api.routes.account as account_module
 from api.main import app
-from db.models import Invite, User, Workspace, WorkspaceMember, WorkspaceRole
+from db.models import (
+    ChannelParseJob,
+    ChannelWatch,
+    Invite,
+    Link,
+    LinkStatus,
+    Post,
+    User,
+    Workspace,
+    WorkspaceMember,
+    WorkspaceRole,
+)
 from shared.config import get_settings
 
 TEST_BOT_TOKEN = "999999:test-bot-token-for-account"
@@ -307,3 +318,89 @@ async def test_invite_by_telegram_id_falls_back_to_code_when_chat_not_found(
     body = resp.json()
     assert body["fallback"] is True
     assert "code" in body
+
+
+async def test_stats_tab_counts_scoped_to_workspace_and_user(db_session, monkeypatch):
+    monkeypatch.setenv("BOT_TOKEN", TEST_BOT_TOKEN)
+    get_settings.cache_clear()
+
+    workspace = Workspace(name="Stats workspace")
+    other_workspace = Workspace(name="Other workspace")
+    db_session.add_all([workspace, other_workspace])
+    await db_session.commit()
+    await db_session.refresh(workspace)
+    await db_session.refresh(other_workspace)
+
+    user = User(telegram_id=777777)
+    other_user = User(telegram_id=888888)
+    db_session.add_all([user, other_user])
+    await db_session.commit()
+    await db_session.refresh(user)
+    await db_session.refresh(other_user)
+    db_session.add_all(
+        [
+            WorkspaceMember(workspace_id=workspace.id, user_id=user.id, role=WorkspaceRole.owner),
+            WorkspaceMember(
+                workspace_id=workspace.id, user_id=other_user.id, role=WorkspaceRole.member
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    # 2 links this user added in their workspace — should count
+    for i in range(2):
+        db_session.add(
+            Link(
+                workspace_id=workspace.id,
+                url=f"https://example.com/{i}",
+                normalized_url=f"https://example.com/{i}",
+                url_hash=f"hash{i}",
+                status=LinkStatus.done,
+                added_by_user_id=user.id,
+            )
+        )
+    # another member's link in the same workspace — should NOT count
+    db_session.add(
+        Link(
+            workspace_id=workspace.id,
+            url="https://example.com/other",
+            normalized_url="https://example.com/other",
+            url_hash="hash-other",
+            status=LinkStatus.done,
+            added_by_user_id=other_user.id,
+        )
+    )
+    # this user's link in a different workspace — should NOT count
+    db_session.add(
+        Link(
+            workspace_id=other_workspace.id,
+            url="https://example.com/wrong-ws",
+            normalized_url="https://example.com/wrong-ws",
+            url_hash="hash-wrong-ws",
+            status=LinkStatus.done,
+            added_by_user_id=user.id,
+        )
+    )
+    db_session.add(
+        Post(workspace_id=workspace.id, chat_id=1, message_id=1, added_by_user_id=user.id)
+    )
+    db_session.add(
+        ChannelParseJob(
+            workspace_id=workspace.id,
+            requested_by_user_id=user.id,
+            channel_username="testchannel",
+            params_json={},
+        )
+    )
+    db_session.add(ChannelWatch(user_id=user.id, channel_username="watched_channel"))
+    await db_session.commit()
+
+    with TestClient(app) as client:
+        _login(client, "777777")
+        resp = client.get("/account")
+
+    text = resp.text
+    stats_start = text.index('id="panel-stats"')
+    stats_section = text[stats_start : stats_start + 1200]
+    assert ">2<" in stats_section  # links_added
+    assert ">1<" in stats_section  # posts_added / channel_parses / watchlist_size (all 1)
