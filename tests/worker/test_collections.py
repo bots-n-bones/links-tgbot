@@ -209,6 +209,59 @@ async def test_generate_weekly_digest_uses_seven_day_window(db_session, workspac
     assert collection.articles[0]["url"] == "https://found.com"
 
 
+async def test_generate_daily_digest_falls_back_to_older_links_when_window_empty(
+    db_session, workspace_id, monkeypatch
+):
+    """Нет активности за сутки (окно пустое), но в workspace есть старые
+    ссылки — дайджест всё равно формируется на их основе, а не пропускается."""
+    await _make_link_with_source(
+        db_session,
+        workspace_id,
+        url="https://old.com",
+        priority=7.0,
+        created_days_ago=10,
+        url_hash="h-old",
+    )
+    candidates = [SearchResult(title="Found", url="https://found.com", snippet="s")]
+    monkeypatch.setattr(
+        collections_module, "get_search_client", lambda: FixedSearchClient(candidates)
+    )
+    monkeypatch.setattr(
+        collections_module,
+        "get_llm_client",
+        lambda: FixedLLMClient(
+            [DigestArticle(title="Found", url="https://found.com", description="d")]
+        ),
+    )
+
+    collection = await collections_module.generate_daily_digest(workspace_id=workspace_id)
+    assert collection is not None
+    assert collection.articles[0]["url"] == "https://found.com"
+
+
+async def test_generate_daily_digest_fallback_excludes_hidden_links(
+    db_session, workspace_id, monkeypatch
+):
+    await _make_link_with_source(
+        db_session,
+        workspace_id,
+        url="https://old-hidden.com",
+        priority=9.0,
+        created_days_ago=10,
+        url_hash="h-old-hidden",
+        is_hidden=True,
+    )
+    monkeypatch.setattr(
+        collections_module,
+        "get_search_client",
+        lambda: FixedSearchClient([SearchResult(title="X", url="https://x.com", snippet="s")]),
+    )
+    monkeypatch.setattr(collections_module, "get_llm_client", lambda: FixedLLMClient([]))
+
+    collection = await collections_module.generate_daily_digest(workspace_id=workspace_id)
+    assert collection is None  # единственная ссылка скрыта — планки нет ни в окне, ни в фоллбэке
+
+
 async def test_generate_weekly_digest_returns_none_for_daily_only_window(
     db_session, workspace_id, monkeypatch
 ):

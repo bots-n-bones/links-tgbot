@@ -69,6 +69,19 @@ async def _reference_links(
     return list((await session.execute(stmt)).scalars().all())
 
 
+async def _reference_links_fallback(session, workspace_id: int) -> list[Link]:
+    """Когда за окно (сутки/неделя) не было новой активности — берём лучшие
+    ссылки за всё время как планку качества, чтобы дайджест всё равно
+    формировался, а не молча пропускался в тихие дни."""
+    stmt = (
+        select(Link)
+        .where(Link.workspace_id == workspace_id, Link.is_hidden.is_(False))
+        .order_by(Link.priority_score.desc())
+        .limit(REFERENCE_LINKS_LIMIT)
+    )
+    return list((await session.execute(stmt)).scalars().all())
+
+
 async def _reference_tags(session, link_ids: list[int]) -> list[str]:
     if not link_ids:
         return []
@@ -113,7 +126,11 @@ async def _generate_web_digest(
     async with sessionmaker() as session:
         reference_links = await _reference_links(session, workspace_id, period_start, period_end)
         if not reference_links:
-            return None  # нет своей активности за период — не с чем сверять планку качества
+            # Нет новой активности за окно — не пропускаем дайджест молча,
+            # берём планку качества из лучших ссылок за всё время.
+            reference_links = await _reference_links_fallback(session, workspace_id)
+        if not reference_links:
+            return None  # в workspace вообще нет ни одной ссылки — не с чем сверять планку
 
         tags = await _reference_tags(session, [link.id for link in reference_links])
         topic_words = ", ".join(tags) or "technology"
