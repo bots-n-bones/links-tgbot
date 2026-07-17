@@ -54,7 +54,7 @@
     .hero-stage {
       position: relative;
       overflow: hidden;
-      padding: 64px 24px 0;
+      padding: 64px 24px 80px;
     }
     .aurora {
       position: absolute;
@@ -120,7 +120,6 @@
       position: relative;
       max-width: 760px;
       margin: 0 auto;
-      padding-bottom: 56px;
       text-align: center;
       opacity: 0;
       animation: hero-in 700ms ease forwards;
@@ -175,6 +174,10 @@
     .feature-card {
       --card-color: var(--accent);
       position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      height: 100%;
       background: var(--bg-elevated);
       border: 1px solid var(--border);
       border-radius: var(--radius-lg);
@@ -225,50 +228,6 @@
       color: var(--ink);
     }
 
-    /* --- How it works --- */
-    .flow {
-      display: flex;
-      align-items: flex-start;
-      justify-content: center;
-      gap: 8px;
-      max-width: 640px;
-      margin: 72px auto 0;
-      padding: 0 24px;
-      opacity: 0;
-      animation: fade-up 560ms ease forwards;
-      animation-delay: 420ms;
-    }
-    .flow-step {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 10px;
-      text-align: center;
-      width: 140px;
-    }
-    .flow-icon {
-      width: 46px;
-      height: 46px;
-      border-radius: 50%;
-      background: var(--bg-elevated);
-      border: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 19px;
-    }
-    .flow-label {
-      font-size: 12px;
-      color: var(--text-muted);
-      line-height: 1.45;
-    }
-    .flow-arrow {
-      font-family: var(--font-mono);
-      color: var(--text-faint);
-      font-size: 16px;
-      padding-top: 12px;
-    }
-
     /* --- CTA --- */
     .cta {
       max-width: 480px;
@@ -277,7 +236,7 @@
       text-align: center;
       opacity: 0;
       animation: fade-up 560ms ease forwards;
-      animation-delay: 520ms;
+      animation-delay: 420ms;
     }
     .cta-line {
       font-size: 16px;
@@ -340,8 +299,6 @@
     @media (max-width: 560px) {
       .feature-grid { grid-template-columns: 1fr; }
       .brand-mascot { width: 52px; height: 52px; }
-      .flow { flex-wrap: wrap; }
-      .flow-arrow { display: none; }
     }
   </style>
 </head>
@@ -388,23 +345,6 @@
       <div class="feature-icon">💬</div>
       <h3>Ask your knowledge base</h3>
       <p>Search everything the team has saved with a RAG assistant that cites its sources, not just guesses.</p>
-    </div>
-  </div>
-
-  <div class="flow" aria-hidden="true">
-    <div class="flow-step">
-      <div class="flow-icon">💬</div>
-      <div class="flow-label">Drop a link or post in Telegram</div>
-    </div>
-    <div class="flow-arrow">→</div>
-    <div class="flow-step">
-      <div class="flow-icon">🤖</div>
-      <div class="flow-label">The bot fetches, tags &amp; dedupes it</div>
-    </div>
-    <div class="flow-arrow">→</div>
-    <div class="flow-step">
-      <div class="flow-icon">📊</div>
-      <div class="flow-label">Browse, search &amp; report on the dashboard</div>
     </div>
   </div>
 
