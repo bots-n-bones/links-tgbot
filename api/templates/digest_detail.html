@@ -1,7 +1,20 @@
 {% extends "base.html" %}
 {% block title %}{{ collection.title }} — Nova-260{% endblock %}
+{% block extra_head %}
+<style>
+  .issue-masthead {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-faint);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+</style>
+{% endblock %}
 {% block content %}
-<a href="{{ back_href }}" class="back-link">&larr; back</a>
+<a href="{{ back_href }}" class="back-link">&larr; back to reports</a>
+<div class="issue-masthead">No. {{ "%03d"|format(issue_no) }} of {{ total }} &middot; {{ published_msk }} MSK</div>
 <div class="eyebrow">{{ "Daily digest" if collection.theme == "daily-digest" else "Weekly digest" }}</div>
 <h1>{{ collection.title }}</h1>
 

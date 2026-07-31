@@ -162,6 +162,18 @@ async def list_digest_history_combined(
     )
 
 
+async def count_digest_history(session: AsyncSession, workspace_id: int, themes: list[str]) -> int:
+    """Общее число выпусков — используется для нумерации issue (No. 001, ...)
+    на странице /digest в стиле репорта: самый старый выпуск — No. 1."""
+    return (
+        await session.scalar(
+            select(func.count())
+            .select_from(Collection)
+            .where(Collection.workspace_id == workspace_id, Collection.theme.in_(themes))
+        )
+    ) or 0
+
+
 async def list_all_tags(session: AsyncSession, workspace_id: int) -> list[tuple[str, int]]:
     stmt = (
         select(Tag.name, func.count(LinkTag.link_id))

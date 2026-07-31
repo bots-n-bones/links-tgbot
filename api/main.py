@@ -21,6 +21,7 @@ from api.routes import channels as channels_routes
 from api.routes import posts as posts_routes
 from api.routes import workspace as workspace_routes
 from api.routes.links import (
+    count_digest_history,
     get_link_detail,
     list_all_tags,
     list_digest_history_combined,
@@ -497,6 +498,9 @@ async def digest_page(
         history = await list_digest_history_combined(
             session, workspace_id, [DAILY_DIGEST_THEME, WEEKLY_DIGEST_THEME], limit=30
         )
+        total = await count_digest_history(
+            session, workspace_id, [DAILY_DIGEST_THEME, WEEKLY_DIGEST_THEME]
+        )
 
     weekday = _WEEKDAY_NAMES.get(settings.collection_cron_day, settings.collection_cron_day)
     schedule_note = (
@@ -504,10 +508,21 @@ async def digest_page(
         f"{weekday} at {settings.collection_cron_hour:02d}:00 MSK."
     )
 
+    latest, past = (history[0], history[1:]) if history else (None, [])
+    # history приходит новее->старее; самый старый выпуск получает No. 1.
+    issue_numbers = {c.id: total - i for i, c in enumerate(history)}
+
     return templates.TemplateResponse(
         request,
         "digest.html",
-        {"history": history, "schedule_note": schedule_note, "is_today_msk": _is_today_msk},
+        {
+            "latest": latest,
+            "past": past,
+            "issue_numbers": issue_numbers,
+            "total": total,
+            "schedule_note": schedule_note,
+            "is_today_msk": _is_today_msk,
+        },
     )
 
 
@@ -523,14 +538,39 @@ async def digest_detail_page(
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         collection = await session.get(Collection, digest_id)
-    if (
-        collection is None
-        or collection.workspace_id != workspace_id
-        or collection.theme not in (DAILY_DIGEST_THEME, WEEKLY_DIGEST_THEME)
-    ):
-        return HTMLResponse("Digest not found", status_code=404)
+        if (
+            collection is None
+            or collection.workspace_id != workspace_id
+            or collection.theme not in (DAILY_DIGEST_THEME, WEEKLY_DIGEST_THEME)
+        ):
+            return HTMLResponse("Digest not found", status_code=404)
+        # Более старые (меньший id, если тот же тип, или созданные раньше) —
+        # id monotонно растёт с датой создания, так что более новые/старые
+        # выпуски в пределах обеих тем считаются по created_at.
+        newer_count = await session.scalar(
+            select(func.count())
+            .select_from(Collection)
+            .where(
+                Collection.workspace_id == workspace_id,
+                Collection.theme.in_((DAILY_DIGEST_THEME, WEEKLY_DIGEST_THEME)),
+                Collection.created_at > collection.created_at,
+            )
+        )
+        total = await count_digest_history(
+            session, workspace_id, [DAILY_DIGEST_THEME, WEEKLY_DIGEST_THEME]
+        )
+    issue_no = total - (newer_count or 0)
+    published_msk = collection.created_at.astimezone(_MSK).strftime("%b %d, %Y · %H:%M")
     return templates.TemplateResponse(
-        request, "digest_detail.html", {"collection": collection, "back_href": "/digest"}
+        request,
+        "digest_detail.html",
+        {
+            "collection": collection,
+            "back_href": "/digest",
+            "issue_no": issue_no,
+            "total": total,
+            "published_msk": published_msk,
+        },
     )
 
 

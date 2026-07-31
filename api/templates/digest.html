@@ -1,29 +1,137 @@
 {% extends "base.html" %}
-{% block title %}Digest — Nova-260{% endblock %}
-{% block content %}
-<div class="eyebrow">Digest</div>
-<h1>Digest</h1>
-<p class="card-meta" style="margin-bottom: 20px;">Top 10 fresh articles from the web, picked by GPT to match the quality bar of what the team recently saved. {{ schedule_note }}</p>
+{% block title %}Reports — Nova-260{% endblock %}
+{% block extra_head %}
+<style>
+  .reports-masthead {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding-bottom: 18px;
+    margin-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  .reports-masthead-meta {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-faint);
+    letter-spacing: 0.02em;
+    text-align: right;
+  }
 
+  .issue-tile {
+    width: 34px;
+    height: 34px;
+    border-radius: var(--radius-md);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    flex-shrink: 0;
+    background: var(--card-color, var(--cyan));
+  }
+
+  .latest-issue {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 22px 20px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--bg-elevated);
+    margin-bottom: 28px;
+    text-decoration: none;
+    color: inherit;
+    transition: border-color 120ms ease;
+  }
+  .latest-issue:hover { border-color: var(--border-strong); }
+  .latest-issue .issue-tile { width: 48px; height: 48px; font-size: 20px; }
+  .latest-issue-no {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .latest-issue-title { font-family: var(--font-display); font-size: 20px; margin-top: 2px; }
+  .latest-issue-meta { font-family: var(--font-mono); font-size: 11px; color: var(--text-faint); margin-top: 6px; }
+
+  .archive-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin: 0 0 10px;
+  }
+
+  .issue-no-col {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-faint);
+    width: 56px;
+    flex-shrink: 0;
+    padding-top: 8px;
+  }
+  .issue-row { display: flex; align-items: flex-start; gap: 14px; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="reports-masthead">
+  <div>
+    <div class="eyebrow">Reports</div>
+    <h1>Nova-260 Reports</h1>
+  </div>
+  <div class="reports-masthead-meta">
+    {{ schedule_note }}<br>
+    {{ total }} issue{{ "s" if total != 1 else "" }} published
+  </div>
+</div>
+
+{% if latest %}
+  {% set is_daily = latest.theme == "daily-digest" %}
+  <a class="latest-issue" href="/digest/{{ latest.id }}">
+    <span class="issue-tile" style="--card-color: var({{ '--cyan' if is_daily else '--yellow' }});">{{ "📥" if is_daily else "🗓" }}</span>
+    <div>
+      <div class="latest-issue-no">Latest — No. {{ "%03d"|format(issue_numbers[latest.id]) }}</div>
+      <div class="latest-issue-title">
+        {% if is_daily %}
+          {{ latest.created_at.strftime('%b %d, %Y') }}
+        {% else %}
+          {{ latest.period_start.strftime('%b %d') }} – {{ latest.period_end.strftime('%b %d, %Y') }}
+        {% endif %}
+        <span class="tag" style="--tag-color: var({{ '--cyan' if is_daily else '--yellow' }});">{{ "Daily" if is_daily else "Weekly" }}</span>
+        {% if is_today_msk(latest.created_at) %}<span class="badge">Actual</span>{% endif %}
+      </div>
+      <div class="latest-issue-meta">{{ (latest.articles or [])|length }} article{{ 's' if (latest.articles or [])|length != 1 else '' }}</div>
+    </div>
+  </a>
+{% endif %}
+
+<p class="archive-label">Past issues</p>
 <div class="panel">
-  {% if history %}
+  {% if past %}
   <div class="row-list">
-    {% for collection in history %}
+    {% for collection in past %}
       {% set is_daily = collection.theme == "daily-digest" %}
       <div class="row-item">
-        <div class="row-main">
-          <div class="row-title">
-            <a href="/digest/{{ collection.id }}">
-              {% if is_daily %}
-                {{ collection.created_at.strftime('%b %d, %Y') }}
-              {% else %}
-                {{ collection.period_start.strftime('%b %d') }} – {{ collection.period_end.strftime('%b %d, %Y') }}
-              {% endif %}
-            </a>
-            <span class="tag" style="--tag-color: var({{ '--cyan' if is_daily else '--yellow' }});">{{ "Daily" if is_daily else "Weekly" }}</span>
-            {% if is_today_msk(collection.created_at) %}<span class="badge">Actual</span>{% endif %}
+        <div class="issue-row">
+          <div class="issue-no-col">No. {{ "%03d"|format(issue_numbers[collection.id]) }}</div>
+          <span class="issue-tile" style="--card-color: var({{ '--cyan' if is_daily else '--yellow' }});">{{ "📥" if is_daily else "🗓" }}</span>
+          <div class="row-main">
+            <div class="row-title">
+              <a href="/digest/{{ collection.id }}">
+                {% if is_daily %}
+                  {{ collection.created_at.strftime('%b %d, %Y') }}
+                {% else %}
+                  {{ collection.period_start.strftime('%b %d') }} – {{ collection.period_end.strftime('%b %d, %Y') }}
+                {% endif %}
+              </a>
+              <span class="tag" style="--tag-color: var({{ '--cyan' if is_daily else '--yellow' }});">{{ "Daily" if is_daily else "Weekly" }}</span>
+            </div>
+            <div class="row-meta">{{ (collection.articles or [])|length }} article{{ 's' if (collection.articles or [])|length != 1 else '' }}</div>
           </div>
-          <div class="row-meta">{{ (collection.articles or [])|length }} article{{ 's' if (collection.articles or [])|length != 1 else '' }}</div>
         </div>
         <div class="row-actions">
           <a class="btn" href="/digest/{{ collection.id }}">Open</a>
@@ -31,8 +139,10 @@
       </div>
     {% endfor %}
   </div>
+  {% elif not latest %}
+    <p class="panel-empty">No reports yet — the first one will be collected automatically on schedule.</p>
   {% else %}
-    <p class="panel-empty">No digests yet — the first one will be collected automatically on schedule.</p>
+    <p class="panel-empty">No past issues yet.</p>
   {% endif %}
 </div>
 {% endblock %}
