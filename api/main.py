@@ -74,11 +74,14 @@ app.include_router(workspace_routes.router)
 
 def _require_workspace(workspace_id: int | None) -> int | RedirectResponse:
     """Волна 4 плана "Личный кабинет + workspace": каждый роут дашборда
-    требует логина — незалогиненных и юзеров без workspace отправляем на
-    /login (там же виден статус, если юзер залогинен, но без workspace —
-    /account объясняет, что делать)."""
+    требует логина и workspace. Редиректим на /account, а не /login — там
+    видно, залогинен ли юзер и что делать, если workspace ещё нет
+    ("Create a team"); /account сам отправит на /login незалогиненных.
+    Раньше редиректило прямо на /login, что для залогиненного-без-workspace
+    юзера выглядело как "логин не сработал" — /login просто заново
+    показывает виджет входа, без объяснения, в чём дело."""
     if workspace_id is None:
-        return RedirectResponse("/login")
+        return RedirectResponse("/account")
     return workspace_id
 
 
