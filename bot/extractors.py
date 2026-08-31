@@ -14,12 +14,20 @@ _URL_RE = re.compile(
 def _entities_urls(text: str | None, entities: list | None) -> list[str]:
     if not text or not entities:
         return []
+    # Telegram считает offset/length в UTF-16 code units, а не в Python-символах
+    # (см. https://core.telegram.org/api/entities#entity-length) — любой
+    # astral-символ перед ссылкой (большинство эмодзи: 🗣🎼💥👋...) занимает 2
+    # UTF-16-юнита, но 1 Python-символ, и прямой срез text[offset:offset+length]
+    # тогда уезжает вперёд, прихватывая хвост (перенос строки и т.п.), из-за
+    # чего httpx падает с InvalidURL. Режем по UTF-16-представлению и декодируем
+    # обратно — так офсеты совпадают с тем, что имел в виду Telegram.
+    text_utf16 = text.encode("utf-16-le")
     urls = []
     for entity in entities:
         entity_type = getattr(entity, "type", None)
         if entity_type == "url":
             offset, length = entity.offset, entity.length
-            urls.append(text[offset : offset + length])
+            urls.append(text_utf16[offset * 2 : (offset + length) * 2].decode("utf-16-le"))
         elif entity_type == "text_link":
             url = getattr(entity, "url", None)
             if url:

@@ -49,6 +49,15 @@ async def test_fetch_metadata_timeout_raises_fetch_error():
         await fetch_metadata("https://example.com/slow")
 
 
+async def test_fetch_metadata_malformed_url_raises_fetch_error_not_invalid_url():
+    """Регресс: httpx.InvalidURL — не подкласс HTTPError, поэтому раньше
+    пролетал мимо except и валил всю Celery-задачу (см. worker/tasks.py
+    _process_raw_message_async — необработанное исключение портило счётчик
+    consecutive failures и триггерило NF-04 алерт)."""
+    with pytest.raises(FetchError):
+        await fetch_metadata("https://example.com/a\nb")
+
+
 @respx.mock
 async def test_fetch_metadata_truncates_text_to_limit():
     long_text = "слово " * 2000

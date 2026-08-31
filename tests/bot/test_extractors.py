@@ -67,3 +67,32 @@ def test_forwarded_message_content_extracted_same_way():
 def test_url_trailing_punctuation_stripped_by_regex():
     msg = FakeMessage(text="статья тут: https://example.com/a.")
     assert extract_urls(msg) == ["https://example.com/a"]
+
+
+def _utf16_offset(text: str, substring: str) -> int:
+    """Telegram-style offset — в UTF-16 code units, не в Python-символах."""
+    idx = text.index(substring)
+    return len(text[:idx].encode("utf-16-le")) // 2
+
+
+def test_url_entity_offset_correct_with_astral_emoji_before_it():
+    """Регресс: astral-эмодзи (🗣🎼💥 и т.п.) занимают 2 UTF-16 code units, но
+    1 Python-символ — сырой text[offset:offset+length] на реальном
+    production-сообщении уезжал вперёд и прихватывал "\\n\\n@cgevent" в конец
+    URL, из-за чего httpx падал с InvalidURL и валил всю Celery-задачу."""
+    text = (
+        "На входе звук, на выходе:\n🗣 Dialogue\n🎼 Music\n💥 SFX\n\n"
+        "Всё в WAV.\n\nhttps://github.com/wassermanproductions/stem-studio\n\n@cgevent"
+    )
+    url = "https://github.com/wassermanproductions/stem-studio"
+    offset = _utf16_offset(text, url)
+    msg = FakeMessage(text=text, entities=[FakeEntity(type="url", offset=offset, length=len(url))])
+    assert extract_urls(msg) == [url]
+
+
+def test_url_entity_offset_correct_with_multiple_astral_emoji_and_custom_emoji():
+    text = "👋 Заголовок\n\n▶️ Смотри тут: \nhttps://youtu.be/KctaE734Z3c\n\nещё текст"
+    url = "https://youtu.be/KctaE734Z3c"
+    offset = _utf16_offset(text, url)
+    msg = FakeMessage(text=text, entities=[FakeEntity(type="url", offset=offset, length=len(url))])
+    assert extract_urls(msg) == [url]

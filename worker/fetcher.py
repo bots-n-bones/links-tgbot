@@ -68,7 +68,12 @@ async def fetch_metadata(url: str, *, text_limit: int = TEXT_LIMIT) -> PageMeta:
     try:
         async with httpx.AsyncClient(headers={"User-Agent": "LinkCollectorBot/1.0"}) as client:
             response = await _get(client, url)
-    except httpx.HTTPError as exc:
+    except (httpx.HTTPError, httpx.InvalidURL) as exc:
+        # InvalidURL — не подкласс HTTPError (голый Exception), но всё равно
+        # "не смогли зафетчить", а не повод ронять всю Celery-задачу: раньше
+        # кривой URL (напр. из-за офсетного бага в bot/extractors.py — уже
+        # исправлен) вылетал необработанным и портил счётчик consecutive
+        # failures в _record_outcome (NF-04 алерт админу).
         raise FetchError(redact_text(f"fetch failed for {url}: {exc}")) from exc
 
     soup = BeautifulSoup(response.text, "html.parser")
