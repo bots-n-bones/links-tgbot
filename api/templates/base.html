@@ -460,6 +460,74 @@
     .under-the-hood-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 20px; }
     .cheat-code { font-family: var(--font-mono); font-size: 13px; color: var(--yellow); border: 1px dashed var(--yellow); border-radius: var(--radius-md); padding: 10px 14px; }
 
+    /* --- Каталог: карточка вместо строки таблицы -----------------------
+       Порядок веса на карточке — заголовок, реплика человека, теги, оценки,
+       откуда и когда. Реплика набирается пропорциональным шрифтом и полным
+       цветом текста, всё измеренное — моноширинным и приглушённо: так видно,
+       где живой человек, а где машина, ещё до чтения. */
+    .cat-modes { display: flex; gap: 2px; background: var(--bg-well); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 3px; }
+    .cat-mode {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      text-decoration: none;
+      color: var(--text-muted);
+      padding: 6px 12px;
+      border-radius: 3px;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .cat-mode:hover { color: var(--text); background: var(--ghost); }
+    .cat-mode.active { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+    .cat-mode-count { opacity: 0.6; margin-left: 6px; }
+
+    .cat-list { display: flex; flex-direction: column; }
+    .cat-card { display: flex; gap: 20px; align-items: flex-start; padding: 14px 20px 12px; border-bottom: 1px solid var(--border); }
+    .cat-card:last-child { border-bottom: none; }
+    .cat-card:hover { background: var(--ghost); }
+    .cat-card.is-unreviewed { box-shadow: inset 2px 0 0 var(--accent); }
+    .cat-body { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: 9px; }
+
+    .cat-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+    .cat-title { font-size: 15px; font-weight: 500; letter-spacing: -0.2px; text-decoration: none; }
+    .cat-title:hover { color: var(--accent); }
+    .cat-origin { font-family: var(--font-mono); font-size: 11px; color: var(--text-faint); }
+
+    /* Реплика — то, ради чего каталог читают: почему это вообще положили. */
+    .cat-note { margin: 0; padding: 0 0 0 11px; border-left: 2px solid var(--border-strong); display: flex; flex-direction: column; gap: 3px; }
+    .cat-note + .cat-note { margin-top: 2px; }
+    .cat-note-who { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+    .cat-note-text { margin: 0; font-size: 13px; color: var(--text); line-height: 1.45; }
+    .cat-note-context { margin: 0; font-size: 12px; color: var(--text-faint); font-style: italic; }
+    .cat-note-empty { font-size: 12px; color: var(--text-faint); padding-left: 13px; }
+    .cat-note-more { font-family: var(--font-mono); font-size: 10px; color: var(--text-faint); padding-left: 13px; letter-spacing: 0.04em; }
+
+    /* Машинное описание — вторично по отношению к реплике человека. */
+    .cat-desc { margin: 0; font-size: 12.5px; color: var(--text-muted); line-height: 1.45; }
+
+    .cat-foot { display: flex; gap: 14px; flex-wrap: wrap; font-family: var(--font-mono); font-size: 10.5px; color: var(--text-faint); letter-spacing: 0.03em; }
+
+    /* Оценки: слева машина, справа человек. Не сливаются в одно число
+       намеренно — расхождение между ними и есть полезный сигнал. */
+    .cat-side { flex: 0 0 260px; display: flex; flex-direction: column; gap: 10px; align-items: flex-end; }
+    .cat-scores { display: flex; gap: 8px; align-items: flex-start; }
+    .score-block { display: flex; flex-direction: column; gap: 4px; align-items: flex-end; min-width: 76px; }
+    .score-label { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-faint); }
+    .score-row { display: flex; align-items: center; gap: 6px; }
+    .score-none { font-family: var(--font-mono); font-size: 12px; color: var(--text-faint); }
+    .team-signal { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+    .team-signal strong { color: var(--text); font-weight: 500; }
+    .cat-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+    .cat-actions .btn { padding: 5px 11px; }
+
+    @media (max-width: 900px) {
+      .cat-card { flex-direction: column; gap: 12px; }
+      .cat-side { flex: 1 1 auto; align-items: flex-start; width: 100%; }
+      .cat-actions { justify-content: flex-start; }
+      .score-block { align-items: flex-start; }
+    }
+
     /* --- Usefulness score badge + hover tooltip --- */
     .score-badge {
       position: relative;

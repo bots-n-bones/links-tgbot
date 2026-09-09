@@ -1,56 +1,39 @@
+{# filters — текущее состояние каталога без страницы; собирается в роуте,
+   чтобы пагинация и переключение режимов не теряли фильтры (это ломалось
+   в старой таблице, где ссылки собирались вручную по трём параметрам). #}
 <div id="links-list">
 {% if links %}
-<div class="table-scroll">
-  <table class="data-table data-table-links">
-    <colgroup>
-      <col style="width: 10%;">
-      <col style="width: 38%;">
-      <col style="width: 10%;">
-      <col style="width: 5%;">
-      <col style="width: 6%;">
-      <col style="width: 5%;">
-      <col style="width: 7%;">
-      <col style="width: 8%;">
-      <col style="width: 5%;">
-      <col style="width: 6%;">
-    </colgroup>
-    <thead>
-      <tr>
-        <th>Title</th>
-        <th>Description</th>
-        <th>Tags</th>
-        <th>Area</th>
-        <th>Priority</th>
-        <th>Tested</th>
-        <th>Date</th>
-        <th>Post Link</th>
-        <th>Usefulness</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for link in links %}
-        {% include "_link_card.html" %}
-      {% endfor %}
-    </tbody>
-  </table>
+<div class="cat-list">
+  {% for link in links %}
+    {% include "_link_card.html" %}
+  {% endfor %}
 </div>
 {% else %}
-  <p class="panel-empty">Nothing found.</p>
+  <p class="panel-empty">
+    {% if mode == "inbox" %}
+      Разобрано всё. Новое появится здесь, как только его кинут в чат.
+    {% elif mode == "hidden" %}
+      Ничего не скрыто.
+    {% elif mode == "tested" %}
+      Пока ничего не отмечено как протестированное.
+    {% else %}
+      Ничего не найдено.
+    {% endif %}
+  </p>
 {% endif %}
 
 {% if total > page_size %}
 {% set total_pages = ((total - 1) // page_size) + 1 %}
 <div class="pagination">
   {% if page > 1 %}
-    <a href="#" hx-get="/partials/links?tag={{ tag or '' }}&area={{ area or '' }}&sort={{ sort }}&page={{ page - 1 }}"
+    <a href="#" hx-get="/partials/links?{{ filters|urlencode }}&page={{ page - 1 }}"
        hx-target="#links-list" hx-swap="outerHTML">←</a>
   {% else %}
     <span class="pagination-disabled">←</span>
   {% endif %}
-  <span class="pagination-current">Page {{ page }} of {{ total_pages }}</span>
+  <span class="pagination-current num">Страница {{ page }} из {{ total_pages }} · {{ total }} записей</span>
   {% if page < total_pages %}
-    <a href="#" hx-get="/partials/links?tag={{ tag or '' }}&area={{ area or '' }}&sort={{ sort }}&page={{ page + 1 }}"
+    <a href="#" hx-get="/partials/links?{{ filters|urlencode }}&page={{ page + 1 }}"
        hx-target="#links-list" hx-swap="outerHTML">→</a>
   {% else %}
     <span class="pagination-disabled">→</span>

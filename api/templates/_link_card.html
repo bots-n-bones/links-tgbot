@@ -1,54 +1,114 @@
 {% set post = (posts_by_link|default({})).get(link.id) %}
-<tr id="link-{{ link.id }}">
-  <td class="col-title">
-    <a href="/links/{{ link.id }}/visit" target="_blank" rel="noopener">{{ link.title or link.url }}</a>
-    {% if link.click_count >= 3 %}<span class="badge">Popular</span>{% endif %}
-    <div class="row-meta">{{ link.domain or '' }}</div>
-  </td>
-  <td class="col-desc">{{ link.description or '' }}</td>
-  <td class="col-tags">
-    <div class="tags">
+{# Реплики, в которых человек действительно что-то написал: сообщение из
+   чата почти всегда содержит и сам URL, message_note() его убирает. Если
+   осталась пустота — комментария не было, и карточка скажет это прямо,
+   а не покажет пустую цитату. #}
+{% set notes = link.sources | selectattr("message_text") | list %}
+{% set shown_notes = notes[:2] %}
+<article class="cat-card{% if not link.reviewed_at %} is-unreviewed{% endif %}" id="link-{{ link.id }}">
+  <div class="cat-body">
+    <div class="cat-head">
+      <a class="cat-title" href="/links/{{ link.id }}/visit" target="_blank" rel="noopener">{{ link.title or link.url }}</a>
+      {% if link.click_count >= 3 %}<span class="badge">Popular</span>{% endif %}
+      {% if link.status.value != "done" %}<span class="badge" style="color: var(--negative); border-color: var(--negative);">{{ link.status.value }}</span>{% endif %}
+      <span class="cat-origin">{{ link.domain or '' }}</span>
+    </div>
+
+    {% set rendered = [] %}
+    {% for source in shown_notes %}
+      {% set note = message_note(source.message_text) %}
+      {% if note %}
+        {% set _ = rendered.append(1) %}
+        <blockquote class="cat-note">
+          <span class="cat-note-who">
+            {{ source.sender_name or "неизвестно" }}{% if source.chat_title %} · {{ source.chat_title }}{% endif %}
+            · {{ source.created_at.strftime('%d.%m') }}
+          </span>
+          {% if source.reply_to_text %}
+            <p class="cat-note-context">в ответ на: {{ source.reply_to_text|truncate(90) }}</p>
+          {% endif %}
+          <p class="cat-note-text">{{ note|truncate(240) }}</p>
+          {% if source.forwarded_from %}
+            <p class="cat-note-context">переслано из {{ source.forwarded_from }}</p>
+          {% endif %}
+        </blockquote>
+      {% endif %}
+    {% endfor %}
+    {% if not rendered %}
+      <p class="cat-note-empty">Положили без комментария.</p>
+    {% elif notes|length > shown_notes|length %}
+      <p class="cat-note-more">+ ещё {{ notes|length - shown_notes|length }} реплик{{ "а" if notes|length - shown_notes|length == 1 else "и" }} — открыть</p>
+    {% endif %}
+
+    {% if link.description %}<p class="cat-desc">{{ link.description|truncate(200) }}</p>{% endif %}
+
+    <div class="tags" style="margin: 0;">
+      {% if link.area %}<span class="tag" style="--tag-color: var({{ area_color(link.area) }});">{{ link.area }}</span>{% endif %}
       {% for t in link.tags %}<span class="tag" style="--tag-color: var({{ tag_color(t.name) }});">{{ t.name }}</span>{% endfor %}
     </div>
-  </td>
-  <td class="col-area">
-    {% if link.area %}<span class="tag" style="--tag-color: var({{ area_color(link.area) }});">{{ link.area }}</span>{% endif %}
-  </td>
-  <td class="col-priority">
-    {% set priority_color = {"low": "--peach", "normal": "--text-faint", "high": "--green"}[link.manual_priority.value] %}
-    <select class="priority-select" style="--tag-color: var({{ priority_color }});"
-            hx-patch="/api/links/{{ link.id }}/priority" hx-trigger="change" hx-target="#link-{{ link.id }}" hx-swap="outerHTML">
-      {% for choice in ["low", "normal", "high"] %}
-        <option value="{{ choice }}" {% if link.manual_priority.value == choice %}selected{% endif %}>{{ choice|capitalize }}</option>
-      {% endfor %}
-    </select>
-  </td>
-  <td class="col-tested">
-    <input type="checkbox" class="tested-checkbox" {% if link.is_tested %}checked{% endif %}
-           hx-patch="/api/links/{{ link.id }}/tested" hx-trigger="change" hx-target="#link-{{ link.id }}" hx-swap="outerHTML"
-           name="tested">
-  </td>
-  <td class="col-date">{{ link.created_at.strftime('%b %d, %Y') }}</td>
-  <td class="col-post">
-    {% if post %}<a class="btn" href="{{ post.post_url }}" target="_blank" rel="noopener">Post Link</a>{% endif %}
-  </td>
-  <td class="col-usefulness">
-    {% if link.usefulness_score is not none %}
-      {% set b = link.usefulness_breakdown or {} %}
-      <span class="score-badge">
-        {{ "%.0f"|format(link.usefulness_score) }}/10
-        <span class="score-tooltip">
-          Depth {{ b.depth }}/4 + Novelty {{ b.novelty }}/3 + Actionability {{ b.actionability }}/3 = {{ b.total }}/10.<br>
-          Rated by GPT when the link was processed.
-        </span>
-      </span>
-    {% endif %}
-  </td>
-  <td class="col-actions">
-    <div class="col-actions-stack">
-      <a class="btn" href="/links/{{ link.id }}">View</a>
-      <button class="btn" hx-get="/links/{{ link.id }}/edit-form" hx-target="#link-{{ link.id }}" hx-swap="outerHTML">Edit</button>
-      <button class="btn" hx-patch="/api/links/{{ link.id }}/hide?hidden=true" hx-target="#link-{{ link.id }}" hx-swap="outerHTML">Hide</button>
+
+    <div class="cat-foot">
+      <span class="num">{{ link.created_at.strftime('%d.%m.%Y') }}</span>
+      {% if link.reviewed_at %}<span>разобрано</span>{% else %}<span style="color: var(--accent);">не разобрано</span>{% endif %}
+      {% if post %}<a href="{{ post.post_url }}" target="_blank" rel="noopener">оригинальный пост →</a>{% endif %}
     </div>
-  </td>
-</tr>
+  </div>
+
+  <div class="cat-side">
+    <div class="cat-scores">
+      {# Слева машина, справа человек — намеренно рядом и подписаны. #}
+      <div class="score-block">
+        <span class="score-label">Auto</span>
+        {% if link.usefulness_score is not none %}
+          {% set b = link.usefulness_breakdown or {} %}
+          <span class="score-badge num">
+            {{ "%.0f"|format(link.usefulness_score) }}/10
+            <span class="score-tooltip">
+              Depth {{ b.depth }}/4 + Novelty {{ b.novelty }}/3 + Actionability {{ b.actionability }}/3 = {{ b.total }}/10.<br>
+              Оценка GPT в момент обработки{% if link.processed_at %} ({{ link.processed_at.strftime('%d.%m.%Y') }}){% endif %} — не пересчитывается.
+            </span>
+          </span>
+        {% else %}
+          <span class="score-none">—</span>
+        {% endif %}
+      </div>
+
+      <div class="score-block">
+        <span class="score-label">Команда</span>
+        <span class="team-signal num">
+          <strong>{{ link.unique_senders }}</strong> чел · <strong>{{ link.source_count }}</strong> раз{% if link.click_count %} · <strong>{{ link.click_count }}</strong> откр{% endif %}
+        </span>
+      </div>
+    </div>
+
+    <div class="cat-scores">
+      <div class="score-block">
+        <span class="score-label">Приоритет</span>
+        {% set priority_color = {"low": "--peach", "normal": "--text-faint", "high": "--green"}[link.manual_priority.value] %}
+        <select class="priority-select" style="--tag-color: var({{ priority_color }});" aria-label="Приоритет"
+                hx-patch="/api/links/{{ link.id }}/priority" hx-trigger="change" hx-target="#link-{{ link.id }}" hx-swap="outerHTML">
+          {% for choice in ["low", "normal", "high"] %}
+            <option value="{{ choice }}" {% if link.manual_priority.value == choice %}selected{% endif %}>{{ choice|capitalize }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="score-block">
+        <span class="score-label">Tested</span>
+        <input type="checkbox" class="tested-checkbox" {% if link.is_tested %}checked{% endif %} aria-label="Протестировано"
+               hx-patch="/api/links/{{ link.id }}/tested" hx-trigger="change" hx-target="#link-{{ link.id }}" hx-swap="outerHTML"
+               name="tested">
+      </div>
+    </div>
+
+    <div class="cat-actions">
+      {% if not link.reviewed_at %}
+        <button class="btn btn-primary" hx-patch="/api/links/{{ link.id }}/reviewed?reviewed=true"
+                hx-target="#link-{{ link.id }}" hx-swap="outerHTML">Разобрано</button>
+      {% endif %}
+      <a class="btn" href="/links/{{ link.id }}">Открыть</a>
+      <button class="btn" hx-get="/links/{{ link.id }}/edit-form" hx-target="#link-{{ link.id }}" hx-swap="outerHTML">Править</button>
+      <button class="btn" hx-patch="/api/links/{{ link.id }}/hide?hidden={{ 'false' if link.is_hidden else 'true' }}"
+              hx-target="#link-{{ link.id }}" hx-swap="outerHTML">{{ "Вернуть" if link.is_hidden else "Скрыть" }}</button>
+    </div>
+  </div>
+</article>

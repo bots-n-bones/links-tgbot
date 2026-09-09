@@ -12,17 +12,23 @@ from sqlalchemy import func, select, text
 from starlette.middleware.sessions import SessionMiddleware
 
 from api.changelog import CHANGELOG, CURRENT_VERSION
+from api.deps import get_current_user, get_current_workspace_id
 from api.export import links_to_csv, links_to_markdown, posts_to_csv, posts_to_markdown
 from api.export_channels import channel_posts_to_csv, channel_posts_to_markdown
-from api.deps import get_current_user, get_current_workspace_id
 from api.routes import account as account_routes
 from api.routes import ask, auth, collections, links, research
 from api.routes import channels as channels_routes
 from api.routes import posts as posts_routes
 from api.routes import workspace as workspace_routes
 from api.routes.links import (
+    CATALOG_MODES,
+    DEFAULT_MODE,
+    MODE_DEFAULT_SORT,
+    catalog_mode_counts,
     count_digest_history,
     get_link_detail,
+    list_all_chats,
+    list_all_senders,
     list_all_tags,
     list_digest_history_combined,
     query_links,
@@ -93,12 +99,67 @@ async def health() -> dict:
     return {"status": "ok"}
 
 
+def _catalog_context(
+    *,
+    result,
+    mode: str,
+    tag: str | None,
+    area: str | None,
+    chat: str | None,
+    sender: str | None,
+    q: str | None,
+    sort: str | None,
+    posts_by_link: dict,
+    extra: dict | None = None,
+) -> dict:
+    filters = {"mode": mode}
+    for key, value in (
+        ("tag", tag),
+        ("area", area),
+        ("chat", chat),
+        ("sender", sender),
+        ("q", q),
+        ("sort", sort),
+    ):
+        if value:
+            filters[key] = value
+
+    context = {
+        "links": result.items,
+        "total": result.total,
+        "page": result.page,
+        "page_size": result.page_size,
+        "mode": mode,
+        "modes": CATALOG_MODES,
+        "tag": tag,
+        "area": area,
+        "chat": chat,
+        "sender": sender,
+        "q": q,
+        "sort": sort,
+        # Режим задаёт сортировку по умолчанию, и выпадающий список должен
+        # показывать ту, по которой список реально отсортирован. Иначе при
+        # ?mode=popular он говорит «по дате», а порядок — по открытиям.
+        # В filters при этом кладётся только явно выбранная сортировка,
+        # чтобы смена режима не таскала за собой чужую.
+        "effective_sort": sort or MODE_DEFAULT_SORT.get(mode, "date"),
+        "filters": filters,
+        "posts_by_link": posts_by_link,
+    }
+    context.update(extra or {})
+    return context
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index(
     request: Request,
+    mode: str = DEFAULT_MODE,
     tag: str | None = None,
     area: str | None = None,
-    sort: str = "date",
+    chat: str | None = None,
+    sender: str | None = None,
+    q: str | None = None,
+    sort: str | None = None,
     page: int = 1,
     workspace_id: int | None = Depends(get_current_workspace_id),
 ):
@@ -110,9 +171,21 @@ async def index(
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         result = await query_links(
-            session, workspace_id=workspace_id, tag=tag, area=area, sort=sort, page=page
+            session,
+            workspace_id=workspace_id,
+            mode=mode,
+            tag=tag,
+            area=area,
+            chat=chat,
+            sender=sender,
+            q=q,
+            sort=sort,
+            page=page,
         )
         all_tags = await list_all_tags(session, workspace_id)
+        mode_counts = await catalog_mode_counts(session, workspace_id)
+        chats = await list_all_chats(session, workspace_id)
+        senders = await list_all_senders(session, workspace_id)
         posts_by_link = await get_posts_by_link_ids(
             session, workspace_id, [link.id for link in result.items]
         )
@@ -120,26 +193,36 @@ async def index(
     return templates.TemplateResponse(
         request,
         "index.html",
-        {
-            "links": result.items,
-            "total": result.total,
-            "page": result.page,
-            "page_size": result.page_size,
-            "tag": tag,
-            "area": area,
-            "sort": sort,
-            "all_tags": all_tags,
-            "posts_by_link": posts_by_link,
-        },
+        _catalog_context(
+            result=result,
+            mode=mode,
+            tag=tag,
+            area=area,
+            chat=chat,
+            sender=sender,
+            q=q,
+            sort=sort,
+            posts_by_link=posts_by_link,
+            extra={
+                "all_tags": all_tags,
+                "mode_counts": mode_counts,
+                "chats": chats,
+                "senders": senders,
+            },
+        ),
     )
 
 
 @app.get("/partials/links", response_class=HTMLResponse)
 async def partial_links(
     request: Request,
+    mode: str = DEFAULT_MODE,
     tag: str | None = None,
     area: str | None = None,
-    sort: str = "date",
+    chat: str | None = None,
+    sender: str | None = None,
+    q: str | None = None,
+    sort: str | None = None,
     page: int = 1,
     workspace_id: int | None = Depends(get_current_workspace_id),
 ):
@@ -151,7 +234,16 @@ async def partial_links(
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         result = await query_links(
-            session, workspace_id=workspace_id, tag=tag, area=area, sort=sort, page=page
+            session,
+            workspace_id=workspace_id,
+            mode=mode,
+            tag=tag,
+            area=area,
+            chat=chat,
+            sender=sender,
+            q=q,
+            sort=sort,
+            page=page,
         )
         posts_by_link = await get_posts_by_link_ids(
             session, workspace_id, [link.id for link in result.items]
@@ -160,16 +252,17 @@ async def partial_links(
     return templates.TemplateResponse(
         request,
         "_links_list.html",
-        {
-            "links": result.items,
-            "posts_by_link": posts_by_link,
-            "total": result.total,
-            "page": result.page,
-            "page_size": result.page_size,
-            "tag": tag,
-            "area": area,
-            "sort": sort,
-        },
+        _catalog_context(
+            result=result,
+            mode=mode,
+            tag=tag,
+            area=area,
+            chat=chat,
+            sender=sender,
+            q=q,
+            sort=sort,
+            posts_by_link=posts_by_link,
+        ),
     )
 
 
@@ -1024,7 +1117,9 @@ async def account_page(request: Request):
             )
             or 0,
             "watchlist_size": await session.scalar(
-                select(func.count()).select_from(ChannelWatch).where(ChannelWatch.user_id == user.id)
+                select(func.count())
+                .select_from(ChannelWatch)
+                .where(ChannelWatch.user_id == user.id)
             )
             or 0,
         }

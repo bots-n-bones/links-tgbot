@@ -1,78 +1,114 @@
 {% extends "base.html" %}
+{% block title %}Каталог — COLLECT{% endblock %}
 {% block content %}
-<div class="eyebrow">Links</div>
-<h1>Links</h1>
-<p class="card-meta" style="margin-bottom: 20px;">Every link the team has captured, in one searchable table.</p>
+<div class="eyebrow">Catalog</div>
+<h1>Каталог</h1>
+<p class="cat-desc" style="margin-bottom: 20px; max-width: 70ch;">
+  Всё, что команда приносила в чат — вместе с тем, что человек написал, кидая это.
+</p>
 
 <div class="panel">
   <div class="panel-header">
-    <span class="panel-title">Links</span>
+    {% include "_catalog_modes.html" %}
+
     <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-      <form class="filters" hx-get="/partials/links" hx-target="#links-list" hx-swap="outerHTML" hx-trigger="change">
+      <form class="filters" hx-get="/partials/links" hx-target="#links-list" hx-swap="outerHTML" hx-trigger="change, search">
+        <input type="hidden" name="mode" value="{{ mode }}">
+
+        <input class="input-field" type="search" name="q" value="{{ q or '' }}" placeholder="Поиск…"
+               style="width: 180px;" aria-label="Поиск по каталогу">
+
         <details class="tag-select">
           <summary>
             {% if tag %}<span class="swatch" style="--tag-color: var({{ tag_color(tag) }});"></span>{% endif %}
-            {{ tag or "All tags" }}
+            {{ tag or "Все теги" }}
           </summary>
           <div class="tag-select-menu">
-            <a class="tag-option" href="#"
-               hx-get="/partials/links?tag=&area={{ area or '' }}&sort={{ sort }}" hx-target="#links-list" hx-swap="outerHTML"
-               onclick="this.closest('details').open=false">All tags</a>
+            <a class="tag-option" href="/?mode={{ mode }}">Все теги</a>
             {% for name, count in all_tags %}
-              <a class="tag-option" href="#"
-                 hx-get="/partials/links?tag={{ name }}&area={{ area or '' }}&sort={{ sort }}" hx-target="#links-list" hx-swap="outerHTML"
-                 onclick="this.closest('details').open=false">
-                <span class="swatch" style="--tag-color: var({{ tag_color(name) }});"></span>{{ name }} ({{ count }})
+              <a class="tag-option" href="/?mode={{ mode }}&tag={{ name }}{% if area %}&area={{ area }}{% endif %}">
+                <span class="swatch" style="--tag-color: var({{ tag_color(name) }});"></span>{{ name }} <span class="num">({{ count }})</span>
               </a>
             {% endfor %}
           </div>
         </details>
+
         <details class="tag-select">
           <summary>
             {% if area %}<span class="swatch" style="--tag-color: var({{ area_color(area) }});"></span>{% endif %}
-            {{ area or "All areas" }}
+            {{ area or "Все area" }}
           </summary>
           <div class="tag-select-menu">
-            <a class="tag-option" href="#"
-               hx-get="/partials/links?tag={{ tag or '' }}&area=&sort={{ sort }}" hx-target="#links-list" hx-swap="outerHTML"
-               onclick="this.closest('details').open=false">All areas</a>
+            <a class="tag-option" href="/?mode={{ mode }}{% if tag %}&tag={{ tag }}{% endif %}">Все area</a>
             {% for choice in area_choices %}
-              <a class="tag-option" href="#"
-                 hx-get="/partials/links?tag={{ tag or '' }}&area={{ choice }}&sort={{ sort }}" hx-target="#links-list" hx-swap="outerHTML"
-                 onclick="this.closest('details').open=false">
+              <a class="tag-option" href="/?mode={{ mode }}{% if tag %}&tag={{ tag }}{% endif %}&area={{ choice }}">
                 <span class="swatch" style="--tag-color: var({{ area_color(choice) }});"></span>{{ choice }}
               </a>
             {% endfor %}
           </div>
         </details>
-        <select name="sort">
-          <option value="date" {% if sort == "date" %}selected{% endif %}>By date</option>
-          <option value="priority" {% if sort == "priority" %}selected{% endif %}>By priority</option>
-          <option value="tested" {% if sort == "tested" %}selected{% endif %}>By tested</option>
-          <option value="usefulness" {% if sort == "usefulness" %}selected{% endif %}>By usefulness</option>
+
+        <details class="tag-select">
+          <summary>{{ chat or "Все чаты" }}</summary>
+          <div class="tag-select-menu">
+            <a class="tag-option" href="/?mode={{ mode }}">Все чаты</a>
+            {% for title, count in chats or [] %}
+              <a class="tag-option" href="/?mode={{ mode }}&chat={{ title }}">{{ title }} <span class="num">({{ count }})</span></a>
+            {% endfor %}
+          </div>
+        </details>
+
+        <details class="tag-select">
+          <summary>{{ sender or "Все авторы" }}</summary>
+          <div class="tag-select-menu">
+            <a class="tag-option" href="/?mode={{ mode }}">Все авторы</a>
+            {% for name, count in senders or [] %}
+              <a class="tag-option" href="/?mode={{ mode }}&sender={{ name }}">{{ name }} <span class="num">({{ count }})</span></a>
+            {% endfor %}
+          </div>
+        </details>
+
+        <select name="sort" aria-label="Сортировка">
+          <option value="date" {% if effective_sort == "date" %}selected{% endif %}>По дате</option>
+          <option value="priority" {% if effective_sort == "priority" %}selected{% endif %}>По приоритету</option>
+          <option value="usefulness" {% if effective_sort == "usefulness" %}selected{% endif %}>По оценке</option>
+          <option value="count" {% if effective_sort == "count" %}selected{% endif %}>По повторам</option>
+          <option value="clicks" {% if effective_sort == "clicks" %}selected{% endif %}>По открытиям</option>
         </select>
       </form>
+
       <details class="tag-select">
-        <summary><span class="plus-icon">+</span>Add link</summary>
-        <div class="tag-select-menu tag-select-menu-left" style="min-width: 300px; padding: 14px;">
+        <summary><span class="plus-icon">+</span>Добавить</summary>
+        <div class="tag-select-menu tag-select-menu-left" style="min-width: 340px; padding: 14px;">
           <form hx-post="/links/add" hx-target="#links-list" hx-swap="outerHTML" style="display: flex; flex-direction: column; gap: 8px;">
+            <input type="hidden" name="mode" value="{{ mode }}">
             <input type="text" name="url" placeholder="https://…" required class="input-field">
-            <button type="submit" class="btn btn-primary">Add</button>
+            <textarea name="note" rows="2" class="input-field"
+                      placeholder="Зачем это команде? (попадёт в карточку так же, как реплика из чата)"></textarea>
+            <button type="submit" class="btn btn-primary">Добавить</button>
           </form>
           <p id="add-link-status" class="card-meta" style="margin: 8px 0 0;"></p>
         </div>
       </details>
     </div>
   </div>
+
+  {% if mode == "inbox" and mode_counts and mode_counts.get("inbox") %}
+    <p class="panel-note">
+      В Inbox лежит всё, что ещё никто не разбирал, — включая захваченное до появления этого режима.
+      Разбор ничего не меняет в записи, он только убирает её отсюда.
+    </p>
+  {% endif %}
+
   {% include "_links_list.html" %}
 </div>
 
 <div style="display: flex; justify-content: flex-end;">
   <details class="tag-select">
-    <summary>Download all data</summary>
-    <div class="tag-select-menu">
-      <a class="tag-option" href="/export/links.csv">Download .csv</a>
-      <a class="tag-option" href="/export/links.md">Download .md</a>
+    <summary>Выгрузить данные</summary>
+    <div class="tag-select-menu tag-select-menu-left">
+      <a class="tag-option" href="/export/links.csv">Скачать .csv</a>
+      <a class="tag-option" href="/export/links.md">Скачать .md</a>
     </div>
   </details>
 </div>

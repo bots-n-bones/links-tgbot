@@ -403,7 +403,7 @@ async def test_edit_form_and_save_flow(db_session, workspace_id, authed_client):
     )
     assert saved.status_code == 200
     assert "Новый заголовок" in saved.text
-    assert "Edit" in saved.text  # вернулись в режим просмотра (карточка)
+    assert "Править" in saved.text  # вернулись в режим просмотра (карточка)
 
 
 async def test_detail_edit_form_uses_detail_view_on_save(db_session, workspace_id, authed_client):

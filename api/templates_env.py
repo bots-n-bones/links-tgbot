@@ -1,4 +1,5 @@
 import hashlib
+import re
 from pathlib import Path
 
 from fastapi.templating import Jinja2Templates
@@ -24,6 +25,18 @@ def tag_color(name: str) -> str:
     return _TAG_COLOR_VARS[idx]
 
 
+# В чате человек кидает ссылку вместе с репликой, и сама ссылка в тексте
+# сообщения нам в карточке не нужна — нужна реплика. Если кроме ссылки в
+# сообщении ничего не было, возвращаем None: карточка должна показать, что
+# комментария не было, а не пустую цитату.
+_URL_IN_TEXT_RE = re.compile(r"https?://\S+")
+
+
+def message_note(text: str | None) -> str | None:
+    without_url = _URL_IN_TEXT_RE.sub("", text or "")
+    return without_url.strip(" \t\n\r\u2014\u2013-:,") or None
+
+
 def clicks_label(count: int) -> str:
     return "click" if count == 1 else "clicks"
 
@@ -47,6 +60,7 @@ def area_color(area: str | None) -> str:
 templates.env.globals["tag_color"] = tag_color
 templates.env.globals["area_color"] = area_color
 templates.env.globals["clicks_label"] = clicks_label
+templates.env.globals["message_note"] = message_note
 templates.env.globals["current_version"] = CURRENT_VERSION
 templates.env.globals["area_choices"] = AREA_CHOICES
 templates.env.globals["swatch_colors"] = _TAG_COLOR_VARS

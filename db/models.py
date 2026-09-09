@@ -87,6 +87,12 @@ class Link(Base):
         Enum(ManualPriority, name="manual_priority"), default=ManualPriority.normal
     )
     is_tested: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Разобрана ли ссылка человеком (режим Inbox каталога). NULL — ещё нет.
+    # Признак заводится явным полем, а не выводится из того, редактировали
+    # запись или нет: «никто не притрагивался» и «посмотрели и решили ничего
+    # не менять» — разные состояния, и второе тоже разбор.
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reviewed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     embedding: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
     added_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
