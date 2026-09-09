@@ -5,7 +5,13 @@ from aiogram.types import Message
 
 from bot.access import resolve_ingest_workspace_id
 from bot.extractors import extract_urls
-from bot.ingest import enqueue_post_processing, enqueue_processing, entities_to_json, ingest_message
+from bot.ingest import (
+    build_source_context,
+    enqueue_post_processing,
+    enqueue_processing,
+    entities_to_json,
+    ingest_message,
+)
 from bot.post_capture import build_post_payload
 from db.models import SourceType
 from db.session import get_sessionmaker
@@ -49,6 +55,7 @@ async def handle_group_message(message: Message, bot_username: str = "") -> None
                 text=message.text or message.caption,
                 entities_json=entities_to_json(message.entities or message.caption_entities),
                 source_type=SourceType.group,
+                **build_source_context(message),
             )
         if is_new:
             enqueue_processing(raw_message.id)

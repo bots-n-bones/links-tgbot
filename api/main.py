@@ -270,11 +270,19 @@ async def partial_links(
 async def add_link_manual(
     request: Request,
     url: str = Form(...),
+    note: str = Form(""),
+    mode: str = Form(DEFAULT_MODE),
     workspace_id: int | None = Depends(get_current_workspace_id),
 ):
     """Ручное добавление ссылки с дашборда — идёт через тот же dedup/LLM
     пайплайн, что и ссылки из бота (bot/ingest.py), просто с синтетическим
-    источником вместо реального Telegram-сообщения."""
+    источником вместо реального Telegram-сообщения.
+
+    Заметка кладётся в текст сообщения рядом с URL — туда же, где живёт
+    реплика из чата. Так в каталоге не появляется два разных «почему»: и
+    заметка, и реплика читаются одним полем. Побочно она достаётся и LLM
+    (worker/tasks.py передаёт message_text в describe_link), то есть
+    объяснение своими словами улучшает автоописание и теги."""
     gate = _require_workspace(workspace_id)
     if isinstance(gate, RedirectResponse):
         return gate
@@ -282,8 +290,9 @@ async def add_link_manual(
     current_user = await get_current_user(request)
 
     url = url.strip()
+    note = note.strip()
     if not url:
-        status_text = "Enter a URL."
+        status_text = "Введите ссылку."
     else:
         sessionmaker = get_sessionmaker()
         async with sessionmaker() as session:
@@ -293,19 +302,23 @@ async def add_link_manual(
                 chat_id=MANUAL_ADD_CHAT_ID,
                 message_id=int(time.time() * 1000),
                 sender_id=current_user.telegram_id if current_user else None,
-                text=url,
+                text=f"{url}\n{note}" if note else url,
                 entities_json=None,
                 source_type=SourceType.manual,
+                sender_name=(
+                    (current_user.full_name or current_user.username) if current_user else None
+                ),
+                chat_title="Добавлено вручную",
             )
         if is_new:
             enqueue_processing(raw_message.id)
-            status_text = "Added — will appear in the table once processed (a few seconds)."
+            status_text = "Добавлено — появится в каталоге через несколько секунд."
         else:
-            status_text = "Already queued."
+            status_text = "Уже в очереди."
 
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
-        result = await query_links(session, workspace_id=workspace_id, sort="date", page=1)
+        result = await query_links(session, workspace_id=workspace_id, mode=mode, page=1)
         posts_by_link = await get_posts_by_link_ids(
             session, workspace_id, [link.id for link in result.items]
         )
@@ -313,16 +326,17 @@ async def add_link_manual(
     list_response = templates.TemplateResponse(
         request,
         "_links_list.html",
-        {
-            "links": result.items,
-            "posts_by_link": posts_by_link,
-            "total": result.total,
-            "page": result.page,
-            "page_size": result.page_size,
-            "tag": None,
-            "area": None,
-            "sort": "date",
-        },
+        _catalog_context(
+            result=result,
+            mode=mode,
+            tag=None,
+            area=None,
+            chat=None,
+            sender=None,
+            q=None,
+            sort=None,
+            posts_by_link=posts_by_link,
+        ),
     )
     status_html = (
         f'<p id="add-link-status" hx-swap-oob="true" class="card-meta">'

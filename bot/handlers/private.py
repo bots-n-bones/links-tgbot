@@ -14,7 +14,13 @@ from bot.access import (
 )
 from bot.extractors import extract_urls
 from bot.formatting import format_link_list_html, format_qa_reply_html
-from bot.ingest import enqueue_post_processing, enqueue_processing, entities_to_json, ingest_message
+from bot.ingest import (
+    build_source_context,
+    enqueue_post_processing,
+    enqueue_processing,
+    entities_to_json,
+    ingest_message,
+)
 from bot.keyboards import main_menu_keyboard
 from bot.post_capture import build_post_payload, is_public_channel_forward
 from bot.states import MenuState
@@ -117,6 +123,7 @@ async def handle_private_message(message: Message, state: FSMContext) -> None:
                 text=message.text or message.caption,
                 entities_json=entities_to_json(message.entities or message.caption_entities),
                 source_type=SourceType.direct,
+                **build_source_context(message),
             )
         if is_new:
             # Пост+ссылка вместе — единое сообщение шлёт worker.posts.process_post

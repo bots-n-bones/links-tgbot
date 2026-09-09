@@ -64,42 +64,90 @@ CHATS = [(-1001, "Общий чат"), (-1002, "AI-новости"), (-1003, "П
 
 # Заготовки материалов: домен, заголовок, описание, area, теги.
 MATERIALS = [
-    ("github.com", "vLLM: continuous batching для LLM-инференса",
-     "Разбор того, как непрерывная батчинг-очередь поднимает throughput инференса в разы.",
-     "ai", ["ai", "ml", "backend"]),
-    ("arxiv.org", "Retrieval-augmented generation: что изменилось за год",
-     "Обзор подходов к RAG — от наивного поиска по эмбеддингам до реранкинга и гибридного поиска.",
-     "ai", ["ai", "ml"]),
-    ("habr.com", "Как мы выкинули Redis и не пожалели",
-     "Опыт замены кэша на локальный in-memory слой: цифры до и после, где это не сработает.",
-     "coding", ["backend", "dev"]),
-    ("github.com", "Библиотека для фоновых задач без Celery",
-     "Лёгкая очередь на Postgres: без брокера, с ретраями и наблюдаемостью из коробки.",
-     "coding", ["backend", "dev"]),
-    ("figma.com", "Дизайн-система: токены вместо компонентов",
-     "Почему начинать надо с ролей и токенов, а не со сборки библиотеки компонентов.",
-     "design", ["design", "frontend"]),
-    ("medium.com", "Плотные интерфейсы: чему учит Bloomberg Terminal",
-     "Информационная плотность как продуктовое требование, а не как вкусовщина.",
-     "design", ["design", "product"]),
-    ("youtube.com", "Час про эмбеддинги без магии",
-     "Понятное объяснение векторного поиска: что реально считается и где ломается.",
-     "ai", ["ai", "ml"]),
-    ("stripe.com", "Как считать unit-экономику SaaS честно",
-     "Разбор метрик, которые чаще всего подгоняют под нужный вывод.",
-     "business", ["product"]),
-    ("github.com", "pgvector в проде: индексы и подводные камни",
-     "HNSW против IVFFlat, размер индекса, скорость вставки, когда всё это разваливается.",
-     "coding", ["backend", "ml"]),
-    ("news.ycombinator.com", "Обсуждение: нужен ли вообще отдельный вектор-стор",
-     "Тред, в котором сходятся аргументы за Postgres и за специализированные базы.",
-     "tech", ["backend", "ml"]),
-    ("habr.com", "Телеграм-боты: архитектура, которая не разваливается",
-     "Разделение хендлеров, очередей и доменной логики на растущем проекте.",
-     "coding", ["backend", "dev"]),
-    ("web.dev", "Core Web Vitals: что правда влияет на конверсию",
-     "Какие метрики двигают деньги, а какие только успокаивают отчёт.",
-     "tech", ["frontend", "product"]),
+    (
+        "github.com",
+        "vLLM: continuous batching для LLM-инференса",
+        "Разбор того, как непрерывная батчинг-очередь поднимает throughput инференса в разы.",
+        "ai",
+        ["ai", "ml", "backend"],
+    ),
+    (
+        "arxiv.org",
+        "Retrieval-augmented generation: что изменилось за год",
+        "Обзор подходов к RAG — от наивного поиска по эмбеддингам до реранкинга.",
+        "ai",
+        ["ai", "ml"],
+    ),
+    (
+        "habr.com",
+        "Как мы выкинули Redis и не пожалели",
+        "Опыт замены кэша на локальный in-memory слой: цифры до и после, где это не сработает.",
+        "coding",
+        ["backend", "dev"],
+    ),
+    (
+        "github.com",
+        "Библиотека для фоновых задач без Celery",
+        "Лёгкая очередь на Postgres: без брокера, с ретраями и наблюдаемостью из коробки.",
+        "coding",
+        ["backend", "dev"],
+    ),
+    (
+        "figma.com",
+        "Дизайн-система: токены вместо компонентов",
+        "Почему начинать надо с ролей и токенов, а не со сборки библиотеки компонентов.",
+        "design",
+        ["design", "frontend"],
+    ),
+    (
+        "medium.com",
+        "Плотные интерфейсы: чему учит Bloomberg Terminal",
+        "Информационная плотность как продуктовое требование, а не как вкусовщина.",
+        "design",
+        ["design", "product"],
+    ),
+    (
+        "youtube.com",
+        "Час про эмбеддинги без магии",
+        "Понятное объяснение векторного поиска: что реально считается и где ломается.",
+        "ai",
+        ["ai", "ml"],
+    ),
+    (
+        "stripe.com",
+        "Как считать unit-экономику SaaS честно",
+        "Разбор метрик, которые чаще всего подгоняют под нужный вывод.",
+        "business",
+        ["product"],
+    ),
+    (
+        "github.com",
+        "pgvector в проде: индексы и подводные камни",
+        "HNSW против IVFFlat, размер индекса, скорость вставки, когда всё это разваливается.",
+        "coding",
+        ["backend", "ml"],
+    ),
+    (
+        "news.ycombinator.com",
+        "Обсуждение: нужен ли вообще отдельный вектор-стор",
+        "Тред, в котором сходятся аргументы за Postgres и за специализированные базы.",
+        "tech",
+        ["backend", "ml"],
+    ),
+    (
+        "habr.com",
+        "Телеграм-боты: архитектура, которая не разваливается",
+        "Разделение хендлеров, очередей и доменной логики на растущем проекте.",
+        "coding",
+        ["backend", "dev"],
+    ),
+    (
+        "web.dev",
+        "Core Web Vitals: что правда влияет на конверсию",
+        "Какие метрики двигают деньги, а какие только успокаивают отчёт.",
+        "tech",
+        ["frontend", "product"],
+    ),
 ]
 
 # Сопроводительные сообщения — то, ради чего каталог вообще читают.
@@ -195,9 +243,7 @@ async def seed(n_links: int = 40) -> None:
         for i in range(n_links):
             url_hash = fake_hash(i)
             exists = await session.scalar(
-                select(Link.id).where(
-                    Link.workspace_id == workspace_id, Link.url_hash == url_hash
-                )
+                select(Link.id).where(Link.workspace_id == workspace_id, Link.url_hash == url_hash)
             )
             if exists:
                 continue
@@ -248,8 +294,12 @@ async def seed(n_links: int = 40) -> None:
                 priority_score=round(random.uniform(0.5, 12), 2),
                 click_count=random.choice([0, 0, 1, 2, 3, 5, 9]),
                 manual_priority=random.choice(
-                    [ManualPriority.normal, ManualPriority.normal,
-                     ManualPriority.high, ManualPriority.low]
+                    [
+                        ManualPriority.normal,
+                        ManualPriority.normal,
+                        ManualPriority.high,
+                        ManualPriority.low,
+                    ]
                 ),
                 is_tested=random.random() < 0.25,
                 is_hidden=random.random() < 0.08,
@@ -266,7 +316,7 @@ async def seed(n_links: int = 40) -> None:
             # По одной реплике на каждого отправителя + возможные повторы от
             # него же: source_count >= unique_senders.
             repeats = link.source_count - n_senders
-            for position, (sender_user_id, sender_name) in enumerate(senders):
+            for position, (_sender_user_id, sender_name) in enumerate(senders):
                 chat_id, chat_title = random.choice(CHATS)
                 sent_at = created_at + timedelta(hours=position * random.randint(1, 30))
                 session.add(

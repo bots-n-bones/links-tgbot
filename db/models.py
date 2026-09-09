@@ -139,6 +139,14 @@ class RawMessage(Base):
     message_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     sender_id: Mapped[int | None] = mapped_column(BigInteger)
     text: Mapped[str | None] = mapped_column(Text)
+    # Кто и откуда прислал — переносится в LinkSource при обработке
+    # (worker/tasks.py). До появления этих колонок поля LinkSource
+    # существовали, но у ссылок всегда оставались пустыми: заполнял их
+    # только захват постов, который идёт мимо raw_messages.
+    sender_name: Mapped[str | None] = mapped_column(Text)
+    chat_title: Mapped[str | None] = mapped_column(Text)
+    reply_to_text: Mapped[str | None] = mapped_column(Text)
+    forwarded_from: Mapped[str | None] = mapped_column(Text)
     entities_json: Mapped[dict | None] = mapped_column(JSONB)
     source_type: Mapped[SourceType] = mapped_column(
         Enum(SourceType, name="source_type"), nullable=False

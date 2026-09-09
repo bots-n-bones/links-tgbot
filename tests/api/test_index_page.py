@@ -51,9 +51,9 @@ async def test_index_page_shows_priority_and_tested_controls(
 async def test_index_page_default_sort_is_date(db_session, authed_client):
     resp = authed_client.get("/")
     assert resp.status_code == 200
-    assert '<option value="date" selected>По дате</option>' in resp.text.replace(
-        "\n", ""
-    ).replace("  ", " ")
+    assert '<option value="date" selected>По дате</option>' in resp.text.replace("\n", "").replace(
+        "  ", " "
+    )
 
 
 async def test_index_page_pagination_shows_arrows_when_multiple_pages(
@@ -86,9 +86,7 @@ async def test_index_page_defaults_to_inbox_and_counts_modes(
     assert "Inbox" in resp.text
 
 
-async def test_reviewed_link_leaves_inbox_but_stays_in_all(
-    db_session, workspace_id, authed_client
-):
+async def test_reviewed_link_leaves_inbox_but_stays_in_all(db_session, workspace_id, authed_client):
     """Разбор убирает запись из Inbox и не трогает ничего больше."""
     link = await _make_link(db_session, workspace_id, url="https://a.com")
 
@@ -107,9 +105,7 @@ async def test_reviewed_link_leaves_inbox_but_stays_in_all(
     assert f'id="link-{link.id}"' in authed_client.get("/?mode=all").text
 
 
-async def test_sort_select_shows_the_sort_actually_applied(
-    db_session, workspace_id, authed_client
-):
+async def test_sort_select_shows_the_sort_actually_applied(db_session, workspace_id, authed_client):
     """Режим задаёт сортировку по умолчанию, и список должен это показывать —
     иначе он утверждает «по дате», когда порядок другой."""
     await _make_link(db_session, workspace_id, url="https://a.com", click_count=9)
@@ -119,9 +115,7 @@ async def test_sort_select_shows_the_sort_actually_applied(
     assert '<option value="clicks" selected>По открытиям</option>' in flat
 
 
-async def test_catalog_search_matches_what_a_person_wrote(
-    db_session, workspace_id, authed_client
-):
+async def test_catalog_search_matches_what_a_person_wrote(db_session, workspace_id, authed_client):
     """Поиск идёт и по сопроводительному сообщению: вспоминаешь реплику
     («Боря писал про очереди»), а не заголовок статьи."""
     from db.models import LinkSource, SourceType

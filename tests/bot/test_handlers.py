@@ -783,3 +783,57 @@ async def test_private_handler_without_pending_state_falls_back_to_casual_chat(d
     msg = make_private_message(58, "как дела?", sender_id=WHITELISTED_USER_ID)
     await private_module.handle_private_message(msg, state)
     assert "Фейковый ответ LLM." in msg.sent[0]
+
+
+async def test_group_handler_records_who_sent_it_and_from_where(db_session, monkeypatch):
+    """Сообщение из группы сохраняет автора, чат и реплику, на которую
+    отвечали.
+
+    Каталог показывает ссылку вместе с тем, что человек написал, и с его
+    именем. Без этих полей карточка знает текст, но не знает автора."""
+    monkeypatch.setattr(group_module, "enqueue_processing", lambda rid: None)
+
+    replied = FakeMessage(
+        chat=FakeChat(id=-100123, type="group", title="AI-новости"),
+        from_user=FakeUser(id=2, full_name="Вика"),
+        message_id=1,
+        text="кто-нибудь трогал pgvector в бою?",
+    )
+    msg = FakeMessage(
+        chat=FakeChat(id=-100123, type="group", title="AI-новости"),
+        from_user=FakeUser(id=1, full_name="Борис"),
+        message_id=2,
+        text="вот https://example.com/a — кажется, это заменит нам две тулзы",
+        reply_to_message=replied,
+    )
+    await group_module.handle_group_message(msg)
+
+    row = (await db_session.execute(select(RawMessage))).scalars().one()
+    assert row.sender_name == "Борис"
+    assert row.chat_title == "AI-новости"
+    assert row.reply_to_text == "кто-нибудь трогал pgvector в бою?"
+    assert row.forwarded_from is None
+
+
+async def test_forwarded_from_name_reads_a_channel_forward():
+    """Пересылка из канала подписывается названием канала, а не именем того,
+    кто её переслал."""
+    from datetime import UTC, datetime
+
+    from aiogram.types import Chat, MessageOriginChannel
+
+    from bot.ingest import forwarded_from_name
+
+    msg = FakeMessage(
+        chat=FakeChat(id=-100123, type="group", title="Общий чат"),
+        from_user=FakeUser(id=1, full_name="Борис"),
+        message_id=3,
+        text="https://example.com/a",
+        forward_origin=MessageOriginChannel(
+            type="channel",
+            date=datetime.now(UTC),
+            chat=Chat(id=-1009, type="channel", title="Техно-лента", username="technolenta"),
+            message_id=7,
+        ),
+    )
+    assert forwarded_from_name(msg) == "Техно-лента"

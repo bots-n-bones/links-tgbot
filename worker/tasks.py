@@ -184,7 +184,11 @@ async def _process_one_url(
                 chat_id=raw_message.chat_id,
                 message_id=raw_message.message_id,
                 sender_id=raw_message.sender_id or 0,
+                sender_name=raw_message.sender_name,
+                chat_title=raw_message.chat_title,
                 message_text=raw_message.text,
+                reply_to_text=raw_message.reply_to_text,
+                forwarded_from=raw_message.forwarded_from,
                 source_type=raw_message.source_type,
                 created_at=now,
             )
@@ -273,7 +277,11 @@ async def _process_one_url(
             chat_id=raw_message.chat_id,
             message_id=raw_message.message_id,
             sender_id=raw_message.sender_id or 0,
+            sender_name=raw_message.sender_name,
+            chat_title=raw_message.chat_title,
             message_text=raw_message.text,
+            reply_to_text=raw_message.reply_to_text,
+            forwarded_from=raw_message.forwarded_from,
             source_type=raw_message.source_type,
             created_at=now,
         )
@@ -581,6 +589,14 @@ async def _add_research_links_async(research_report_id: int) -> list[int]:
             message_id=None,
             sender_id=0,
             text=f"Добавлено из research-отчёта #{research_report_id}",
+            # Ссылки из отчёта тоже подписываются источником — иначе в
+            # каталоге они выглядят возникшими из ниоткуда, тогда как
+            # «пришло из research-отчёта» это осмысленный ответ на вопрос,
+            # откуда это здесь.
+            sender_name=None,
+            chat_title="Research-отчёт",
+            reply_to_text=None,
+            forwarded_from=None,
             source_type=SourceType.direct,
         )
 
