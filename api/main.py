@@ -30,6 +30,7 @@ from api.routes.links import (
     list_all_chats,
     list_all_senders,
     list_all_tags,
+    list_catalog_views,
     list_digest_history_combined,
     query_links,
 )
@@ -186,6 +187,7 @@ async def index(
         mode_counts = await catalog_mode_counts(session, workspace_id)
         chats = await list_all_chats(session, workspace_id)
         senders = await list_all_senders(session, workspace_id)
+        views = await list_catalog_views(session, workspace_id)
         posts_by_link = await get_posts_by_link_ids(
             session, workspace_id, [link.id for link in result.items]
         )
@@ -208,6 +210,7 @@ async def index(
                 "mode_counts": mode_counts,
                 "chats": chats,
                 "senders": senders,
+                "views": views,
             },
         ),
     )

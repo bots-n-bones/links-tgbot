@@ -17,7 +17,15 @@ from sqlalchemy.orm import selectinload
 from api.deps import get_current_user, get_current_workspace_id
 from api.routes.posts import get_posts_by_link_ids
 from api.templates_env import templates
-from db.models import Collection, Link, LinkSource, LinkTag, ManualPriority, Tag
+from db.models import (
+    CatalogView,
+    Collection,
+    Link,
+    LinkSource,
+    LinkTag,
+    ManualPriority,
+    Tag,
+)
 from db.session import get_sessionmaker
 from shared.tag_normalizer import normalize_tags
 from worker.llm import normalize_area
@@ -314,6 +322,26 @@ async def list_all_senders(session: AsyncSession, workspace_id: int) -> list[tup
     return list((await session.execute(stmt)).all())
 
 
+# Какие параметры каталога вообще имеет смысл сохранять в вид. Страница
+# сюда не входит осознанно: вид — это «что показывать», а не «где я
+# остановился».
+VIEW_PARAM_KEYS = ("mode", "tag", "area", "chat", "sender", "q", "sort")
+
+
+async def list_catalog_views(session: AsyncSession, workspace_id: int) -> list[CatalogView]:
+    return list(
+        (
+            await session.execute(
+                select(CatalogView)
+                .where(CatalogView.workspace_id == workspace_id)
+                .order_by(CatalogView.name)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
 async def get_link_detail(session: AsyncSession, workspace_id: int, link_id: int) -> Link | None:
     link = await session.get(Link, link_id)
     if link is None or link.workspace_id != workspace_id:
@@ -581,6 +609,80 @@ async def update_link_tested(
 
 
 BULK_ACTIONS = ("reviewed", "unreviewed", "hide", "unhide", "tested", "untested", "priority")
+
+
+@router.post("/views")
+async def save_catalog_view(
+    request: Request,
+    name: str = Form(...),
+    workspace_id: int | None = Depends(get_current_workspace_id),
+):
+    """Сохранить текущий набор фильтров под именем.
+
+    Вид общий для workspace, а не личный: «что тестировать» — это про
+    команду, и держать у каждого свою копию значило бы, что договорённости
+    нет."""
+    workspace_id = _require_workspace(workspace_id)
+    name = name.strip()
+    if not name:
+        raise HTTPException(422, "Название вида не может быть пустым")
+
+    params = {
+        key: value
+        for key, value in request.query_params.items()
+        if key in VIEW_PARAM_KEYS and value
+    }
+    user = await get_current_user(request)
+
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        existing = await session.scalar(
+            select(CatalogView).where(
+                CatalogView.workspace_id == workspace_id, CatalogView.name == name
+            )
+        )
+        # Одноимённый вид перезаписывается, а не падает уникальным
+        # индексом: «сохранить под тем же именем» читается как «обновить».
+        if existing is not None:
+            existing.params_json = params
+        else:
+            session.add(
+                CatalogView(
+                    workspace_id=workspace_id,
+                    name=name,
+                    params_json=params,
+                    created_by_user_id=user.id if user else None,
+                )
+            )
+        await session.commit()
+        views = await list_catalog_views(session, workspace_id)
+
+    return templates.TemplateResponse(
+        request,
+        "_catalog_views.html",
+        {"views": views, "saved_name": name, "filters": params, "mode": params.get("mode")},
+    )
+
+
+@router.delete("/views/{view_id}")
+async def delete_catalog_view(
+    request: Request,
+    view_id: int,
+    workspace_id: int | None = Depends(get_current_workspace_id),
+):
+    workspace_id = _require_workspace(workspace_id)
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        view = await session.get(CatalogView, view_id)
+        if view is None or view.workspace_id != workspace_id:
+            raise HTTPException(404, "Вид не найден")
+        await session.delete(view)
+        await session.commit()
+        views = await list_catalog_views(session, workspace_id)
+
+    return templates.TemplateResponse(
+        request, "_catalog_views.html", {"views": views, "filters": {}, "mode": None}
+    )
 
 
 @router.post("/bulk")

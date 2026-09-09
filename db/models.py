@@ -269,6 +269,26 @@ class Collection(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class CatalogView(Base):
+    """Сохранённый вид каталога — набор фильтров под именем.
+
+    Параметры лежат одним JSON, а не колонками под каждый фильтр: набор
+    фильтров каталога будет меняться, и вид не должен требовать миграции
+    при каждом новом фильтре."""
+
+    __tablename__ = "catalog_views"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "name", name="uq_catalog_views_workspace_name"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    params_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class WorkspaceRole(str, enum.Enum):
     owner = "owner"
     member = "member"

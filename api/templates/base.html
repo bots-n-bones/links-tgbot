@@ -528,6 +528,16 @@
       .score-block { align-items: flex-start; }
     }
 
+    /* --- Сохранённые виды --- */
+    .cat-views { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 10px 20px; border-bottom: 1px solid var(--border); }
+    .view-chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 3px 4px 3px 10px; font-size: 12px; }
+    .view-chip:hover { border-color: var(--border-strong); }
+    .view-chip.active { border-color: var(--accent); }
+    .view-chip a { text-decoration: none; color: var(--text-muted); }
+    .view-chip a:hover { color: var(--text); }
+    .view-drop { background: none; border: none; color: var(--text-faint); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 4px; }
+    .view-drop:hover { color: var(--negative); }
+
     /* --- Массовые действия --- */
     .cat-pick { flex: 0 0 auto; padding-top: 2px; }
     .cat-pick input { width: 15px; height: 15px; cursor: pointer; accent-color: var(--accent); }
