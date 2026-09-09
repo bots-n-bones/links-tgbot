@@ -2,12 +2,16 @@
    чтобы пагинация и переключение режимов не теряли фильтры (это ломалось
    в старой таблице, где ссылки собирались вручную по трём параметрам). #}
 <div id="links-list">
+{% if bulk_applied %}
+  <p class="panel-note num">Применено к {{ bulk_applied }} записям.</p>
+{% endif %}
 {% if links %}
-<div class="cat-list">
+{# Форма вокруг списка: галочки уезжают в /api/links/bulk через hx-include. #}
+<form id="bulk-form" class="cat-list">
   {% for link in links %}
     {% include "_link_card.html" %}
   {% endfor %}
-</div>
+</form>
 {% else %}
   <p class="panel-empty">
     {% if mode == "inbox" %}
@@ -41,3 +45,7 @@
 </div>
 {% endif %}
 </div>
+{# Счётчики вкладок обновляются вне #links-list — элемент для out-of-band
+   свопа должен лежать на верхнем уровне ответа, а не внутри заменяемого
+   блока, иначе HTMX его не подхватит. #}
+{% if oob %}{% include "_catalog_modes.html" %}{% endif %}

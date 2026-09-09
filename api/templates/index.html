@@ -100,6 +100,64 @@
     </p>
   {% endif %}
 
+  {# Панель массовых действий. Появляется, только когда что-то выбрано:
+     постоянная панель на пустом выборе — это шум, который читают один раз
+     и перестают замечать. #}
+  {# Панель массовых действий. Появляется, только когда что-то выбрано:
+     постоянная панель на пустом выборе — это шум, который читают один раз
+     и перестают замечать.
+
+     hx-post висит на каждой кнопке, а не на общей обёртке: HTMX отправляет
+     значения элемента, который вызвал запрос, и на обёртке им оказался бы
+     сам контейнер, без action. #}
+  <div class="bulk-bar" id="bulk-bar" hidden>
+    <span class="bulk-count num"><span id="bulk-n">0</span> выбрано</span>
+    <div class="bulk-actions">
+      {% if mode == "inbox" %}
+        <button class="btn btn-primary" hx-post="/api/links/bulk?{{ filters|urlencode }}"
+                hx-vals='{"action": "reviewed"}' hx-include="#bulk-form"
+                hx-target="#links-list" hx-swap="outerHTML">Разобрано</button>
+      {% else %}
+        <button class="btn" hx-post="/api/links/bulk?{{ filters|urlencode }}"
+                hx-vals='{"action": "unreviewed"}' hx-include="#bulk-form"
+                hx-target="#links-list" hx-swap="outerHTML">Вернуть в Inbox</button>
+      {% endif %}
+      <button class="btn" hx-post="/api/links/bulk?{{ filters|urlencode }}"
+              hx-vals='{"action": "tested"}' hx-include="#bulk-form"
+              hx-target="#links-list" hx-swap="outerHTML">Проверено</button>
+      {% if mode == "hidden" %}
+        <button class="btn" hx-post="/api/links/bulk?{{ filters|urlencode }}"
+                hx-vals='{"action": "unhide"}' hx-include="#bulk-form"
+                hx-target="#links-list" hx-swap="outerHTML">Вернуть</button>
+      {% else %}
+        <button class="btn" hx-post="/api/links/bulk?{{ filters|urlencode }}"
+                hx-vals='{"action": "hide"}' hx-include="#bulk-form"
+                hx-target="#links-list" hx-swap="outerHTML">Скрыть</button>
+      {% endif %}
+      <button class="btn" hx-post="/api/links/bulk?{{ filters|urlencode }}"
+              hx-vals='{"action": "priority", "priority": "high"}' hx-include="#bulk-form"
+              hx-target="#links-list" hx-swap="outerHTML">Приоритет high</button>
+    </div>
+    <button class="btn bulk-clear" type="button" id="bulk-clear">Снять выбор</button>
+  </div>
+
+  {% if mode == "inbox" and mode_counts and mode_counts.get("inbox") %}
+    {# Отдельно от выбора: Inbox стартует полным из-за того, что миграция
+       намеренно не проставляла разбор задним числом. Обнулить стопку —
+       решение команды, и принимается оно один раз. #}
+    <div class="bulk-bar bulk-bar-static">
+      <span class="bulk-count">Разбирали не всё, что накопилось раньше?</span>
+      <div class="bulk-actions">
+        <button class="btn" hx-post="/api/links/bulk?{{ filters|urlencode }}"
+                hx-vals='{"action": "reviewed", "scope": "all"}'
+                hx-target="#links-list" hx-swap="outerHTML"
+                hx-confirm="Отметить разобранным всё, что сейчас в этом фильтре?">
+          Отметить всё разобранным
+        </button>
+      </div>
+    </div>
+  {% endif %}
+
   {% include "_links_list.html" %}
 </div>
 
@@ -112,4 +170,32 @@
     </div>
   </details>
 </div>
+
+<script>
+  // Панель массовых действий показывается, только когда что-то выбрано.
+  // Слушаем на document, потому что список целиком заменяется HTMX и
+  // обработчик, повешенный на сам список, после первого же свопа отвалится.
+  (function () {
+    const bar = document.getElementById("bulk-bar");
+    const counter = document.getElementById("bulk-n");
+    if (!bar || !counter) return;
+
+    function picked() {
+      return document.querySelectorAll("#bulk-form input[name=ids]:checked");
+    }
+    function sync() {
+      const n = picked().length;
+      counter.textContent = n;
+      bar.hidden = n === 0;
+    }
+    document.addEventListener("change", function (event) {
+      if (event.target.matches("input[name=ids]")) sync();
+    });
+    document.addEventListener("htmx:afterSwap", sync);
+    document.getElementById("bulk-clear").addEventListener("click", function () {
+      picked().forEach(function (box) { box.checked = false; });
+      sync();
+    });
+  })();
+</script>
 {% endblock %}

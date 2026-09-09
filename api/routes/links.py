@@ -33,6 +33,10 @@ def _require_workspace(workspace_id: int | None) -> int:
 router = APIRouter(prefix="/api/links", tags=["links"])
 
 PAGE_SIZE = 20
+# Потолок для действия «применить ко всей выборке». Не «без ограничения»:
+# запрос должен оставаться одним обозримым UPDATE, а не подвисать на базе,
+# в которой десятки тысяч ссылок.
+BULK_ALL_LIMIT = 1000
 SORT_COLUMNS = {
     "priority": Link.manual_priority.desc(),
     "date": Link.created_at.desc(),
@@ -574,6 +578,137 @@ async def update_link_tested(
                 drop=(mode == "tested" and not tested),
             )
         return LinkOut.from_link(link).model_dump(mode="json")
+
+
+BULK_ACTIONS = ("reviewed", "unreviewed", "hide", "unhide", "tested", "untested", "priority")
+
+
+@router.post("/bulk")
+async def bulk_update_links(
+    request: Request,
+    action: str = Form(...),
+    priority: str = Form(""),
+    scope: str = Form("selected"),
+    workspace_id: int | None = Depends(get_current_workspace_id),
+):
+    """Массовое действие над выбранными записями либо над всей текущей выборкой.
+
+    scope="all" нужен ровно из-за одной ситуации: миграция намеренно не
+    проставляла reviewed_at задним числом, поэтому в Inbox сразу лежит всё,
+    что накопилось раньше. Разбирать это по одной записи бессмысленно, а
+    подделать разбор в миграции — нечестно; правильное место для решения
+    «этого мы не разбирали и разбирать не будем» — кнопка, которую нажал
+    человек.
+    """
+    workspace_id = _require_workspace(workspace_id)
+    if action not in BULK_ACTIONS:
+        raise HTTPException(422, "Unknown bulk action")
+
+    user = await get_current_user(request)
+    mode = _current_mode(request)
+    params = dict(request.query_params)
+    # Галочки приходят повторяющимся полем ids, поэтому читаем список из
+    # формы, а не объявляем list-параметр: параметр с изменяемым типом в
+    # значении по умолчанию ловит B008, а getlist к тому же честнее
+    # описывает, что пришло от клиента. Нечисловое молча отбрасываем —
+    # это данные из браузера, а не аргумент внутреннего вызова.
+    ids = [int(value) for value in (await request.form()).getlist("ids") if str(value).isdigit()]
+
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        if scope == "all":
+            # Вся текущая выборка, а не только текущая страница: кнопка
+            # обещает «всё в этом фильтре».
+            selection = await query_links(
+                session,
+                workspace_id=workspace_id,
+                mode=mode,
+                tag=params.get("tag"),
+                area=params.get("area"),
+                chat=params.get("chat"),
+                sender=params.get("sender"),
+                q=params.get("q"),
+                page=1,
+                page_size=BULK_ALL_LIMIT,
+            )
+            targets = selection.items
+        else:
+            targets = list(
+                (
+                    await session.execute(
+                        # Скоуп по workspace здесь не формальность: ids
+                        # приходят из формы, то есть от клиента, и без него
+                        # чужую запись можно было бы тронуть по номеру.
+                        select(Link).where(
+                            Link.workspace_id == workspace_id, Link.id.in_(ids or [-1])
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+        now = datetime.now(UTC)
+        for link in targets:
+            if action == "reviewed":
+                link.reviewed_at = now
+                link.reviewed_by_user_id = user.id if user else None
+            elif action == "unreviewed":
+                link.reviewed_at = None
+                link.reviewed_by_user_id = None
+            elif action == "hide":
+                link.is_hidden = True
+            elif action == "unhide":
+                link.is_hidden = False
+            elif action == "tested":
+                link.is_tested = True
+            elif action == "untested":
+                link.is_tested = False
+            elif action == "priority":
+                if priority not in (p.value for p in ManualPriority):
+                    raise HTTPException(422, "Invalid priority")
+                link.manual_priority = ManualPriority(priority)
+        await session.commit()
+
+        result = await query_links(
+            session,
+            workspace_id=workspace_id,
+            mode=mode,
+            tag=params.get("tag"),
+            area=params.get("area"),
+            chat=params.get("chat"),
+            sender=params.get("sender"),
+            q=params.get("q"),
+            sort=params.get("sort"),
+            page=1,
+        )
+        posts_by_link = await get_posts_by_link_ids(
+            session, workspace_id, [link.id for link in result.items]
+        )
+        mode_counts = await catalog_mode_counts(session, workspace_id)
+
+    filters = {"mode": mode}
+    for key in ("tag", "area", "chat", "sender", "q", "sort"):
+        if params.get(key):
+            filters[key] = params[key]
+
+    return templates.TemplateResponse(
+        request,
+        "_links_list.html",
+        {
+            "links": result.items,
+            "posts_by_link": posts_by_link,
+            "total": result.total,
+            "page": result.page,
+            "page_size": result.page_size,
+            "mode": mode,
+            "modes": CATALOG_MODES,
+            "mode_counts": mode_counts,
+            "filters": filters,
+            "bulk_applied": len(targets),
+            "oob": True,
+        },
+    )
 
 
 @router.patch("/{link_id}/reviewed")

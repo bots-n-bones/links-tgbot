@@ -15,14 +15,26 @@ def test_tag_color_varies_by_name():
 
 
 def test_clicks_label_singular():
-    assert clicks_label(1) == "click"
+    assert clicks_label(1) == "переход"
+    assert clicks_label(21) == "переход"
 
 
 def test_clicks_label_plural():
-    assert clicks_label(0) == "clicks"
-    assert clicks_label(2) == "clicks"
-    assert clicks_label(11) == "clicks"
-    assert clicks_label(111) == "clicks"
+    assert clicks_label(2) == "перехода"
+    assert clicks_label(3) == "перехода"
+    assert clicks_label(4) == "перехода"
+    assert clicks_label(23) == "перехода"
+
+    assert clicks_label(0) == "переходов"
+    assert clicks_label(5) == "переходов"
+    assert clicks_label(111) == "переходов"
+
+
+def test_clicks_label_handles_the_teens():
+    """11-14 — исключение из правила по последней цифре: «11 переходов»,
+    а не «11 переход»."""
+    for count in (11, 12, 13, 14, 111, 112):
+        assert clicks_label(count) == "переходов"
 
 
 def test_area_color_is_fixed_per_area():

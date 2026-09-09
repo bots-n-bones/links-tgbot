@@ -528,6 +528,34 @@
       .score-block { align-items: flex-start; }
     }
 
+    /* --- Массовые действия --- */
+    .cat-pick { flex: 0 0 auto; padding-top: 2px; }
+    .cat-pick input { width: 15px; height: 15px; cursor: pointer; accent-color: var(--accent); }
+    .bulk-bar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 11px 20px; border-bottom: 1px solid var(--border); background: var(--bg-well); }
+    .bulk-bar[hidden] { display: none; }
+    .bulk-bar-static { background: transparent; }
+    .bulk-count { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.04em; color: var(--text-muted); }
+    .bulk-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .bulk-clear { margin-left: auto; }
+
+    /* --- Тред источников на странице ссылки ---------------------------
+       Всё, что писали, кидая эту ссылку: кто, в каком чате, когда и в ответ
+       на что. Это и есть история решения — почему запись здесь. */
+    .thread { display: flex; flex-direction: column; gap: 0; border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; }
+    .thread-item { padding: 13px 16px; border-bottom: 1px solid var(--border); }
+    .thread-item:last-child { border-bottom: none; }
+    .thread-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); margin-bottom: 5px; }
+    .thread-who { color: var(--text-muted); }
+    .thread-text { margin: 0; font-size: 13.5px; line-height: 1.45; color: var(--text); }
+    .thread-context { margin: 0 0 5px; font-size: 12px; color: var(--text-faint); font-style: italic; }
+    .thread-empty { margin: 0; font-size: 13px; color: var(--text-faint); }
+
+    .detail-scores { display: flex; gap: 26px; flex-wrap: wrap; padding: 14px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); margin: 16px 0; }
+    .detail-score { display: flex; flex-direction: column; gap: 5px; }
+    .detail-score .score-label { font-size: 9.5px; }
+    .detail-score-value { font-family: var(--font-mono); font-size: 17px; color: var(--text); }
+    .detail-score-note { font-family: var(--font-mono); font-size: 10px; color: var(--text-faint); }
+
     /* --- Usefulness score badge + hover tooltip --- */
     .score-badge {
       position: relative;
@@ -601,6 +629,18 @@
       font-size: 12px;
       font-weight: 500;
     }
+    /* Area — одна на запись и из фиксированного набора, тегов много и они
+       произвольные. Заливкой они читались как одно и то же, поэтому area
+       обведена, а не залита. */
+    .tag-area {
+      background: transparent;
+      color: var(--tag-color, var(--text-muted));
+      border: 1px solid var(--tag-color, var(--border-strong));
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
     .click-count { font-family: var(--font-mono); font-size: 11px; color: var(--text-faint); }
 
     .edit-form { display: flex; flex-direction: column; gap: 8px; padding: 16px 20px; }
@@ -644,6 +684,12 @@
     footer a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
     footer a:hover { color: var(--accent-active); }
 
+    @media (max-width: 900px) {
+      .site-header { flex-wrap: wrap; height: auto; padding: 12px 0; gap: 10px; }
+      /* Поиск переносится на свою строку целиком, а не сжимается в кнопку. */
+      .header-search { order: 3; flex-basis: 100%; max-width: none; margin: 0; }
+    }
+
     @media (max-width: 520px) {
       body { padding: 0 16px 48px; }
       .site-header { flex-wrap: wrap; height: auto; padding: 14px 0; gap: 10px; }
@@ -662,20 +708,20 @@
     </a>
     <div class="header-search">
       <form hx-post="/ask" hx-target="#header-search-results" hx-swap="innerHTML" hx-indicator="#header-search-loading">
-        <input type="text" name="question" placeholder="Search links &amp; posts…"
+        <input type="text" name="question" placeholder="Спросить у базы…"
                hx-post="/ask" hx-trigger="keyup[key=='Enter']" hx-target="#header-search-results"
                hx-swap="innerHTML" hx-indicator="#header-search-loading">
         <button type="submit" class="header-search-submit" aria-label="Search">→</button>
       </form>
-      <span id="header-search-loading" class="htmx-indicator">Searching…</span>
+      <span id="header-search-loading" class="htmx-indicator">Ищу…</span>
       <div id="header-search-results" class="header-search-results"></div>
     </div>
     {% if request.session.get("user_id") %}
     <nav class="site-nav">
-      <a href="/" class="{{ 'active' if request.url.path == '/' else '' }}">Links</a>
-      <a href="/posts" class="{{ 'active' if request.url.path.startswith('/posts') else '' }}">Posts</a>
-      <a href="/channels" class="{{ 'active' if request.url.path.startswith('/channels') else '' }}">Channels</a>
-      <a href="/digest" class="{{ 'active' if request.url.path.startswith('/digest') else '' }}">Digest</a>
+      <a href="/" class="{{ 'active' if request.url.path in ('/', '') or request.url.path.startswith('/links') else '' }}">Каталог</a>
+      <a href="/posts" class="{{ 'active' if request.url.path.startswith('/posts') else '' }}">Посты</a>
+      <a href="/channels" class="{{ 'active' if request.url.path.startswith('/channels') else '' }}">Каналы</a>
+      <a href="/digest" class="{{ 'active' if request.url.path.startswith('/digest') else '' }}">Дайджест</a>
     </nav>
     {% endif %}
     <div class="site-auth">
@@ -690,17 +736,17 @@
           <span>{{ request.session.get("display_name") }}</span>
         </a>
         <form method="post" action="/logout" style="display: inline;">
-          <button type="submit" class="btn">Log out</button>
+          <button type="submit" class="btn">Выйти</button>
         </form>
       {% elif request.url.path != '/login' %}
-        <a href="/login" class="btn btn-primary">Log in</a>
+        <a href="/login" class="btn btn-primary">Войти</a>
       {% endif %}
     </div>
   </header>
   {% block content %}{% endblock %}
   <footer>
     <span>COLLECT · Team knowledge base</span>
-    <span>Version <a href="/changelog">v{{ current_version }}</a></span>
+    <span>Версия <a href="/changelog">v{{ current_version }}</a></span>
   </footer>
 </body>
 </html>

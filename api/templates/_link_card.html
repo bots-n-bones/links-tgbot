@@ -6,6 +6,9 @@
 {% set notes = link.sources | selectattr("message_text") | list %}
 {% set shown_notes = notes[:2] %}
 <article class="cat-card{% if not link.reviewed_at %} is-unreviewed{% endif %}" id="link-{{ link.id }}">
+  <label class="cat-pick" aria-label="Выбрать">
+    <input type="checkbox" name="ids" value="{{ link.id }}" form="bulk-form">
+  </label>
   <div class="cat-body">
     <div class="cat-head">
       <a class="cat-title" href="/links/{{ link.id }}/visit" target="_blank" rel="noopener">{{ link.title or link.url }}</a>
@@ -37,13 +40,13 @@
     {% if not rendered %}
       <p class="cat-note-empty">Положили без комментария.</p>
     {% elif notes|length > shown_notes|length %}
-      <p class="cat-note-more">+ ещё {{ notes|length - shown_notes|length }} реплик{{ "а" if notes|length - shown_notes|length == 1 else "и" }} — открыть</p>
+      <p class="cat-note-more"><a href="/links/{{ link.id }}">+ ещё {{ notes|length - shown_notes|length }} реплик{{ "а" if notes|length - shown_notes|length == 1 else "и" }} →</a></p>
     {% endif %}
 
     {% if link.description %}<p class="cat-desc">{{ link.description|truncate(200) }}</p>{% endif %}
 
     <div class="tags" style="margin: 0;">
-      {% if link.area %}<span class="tag" style="--tag-color: var({{ area_color(link.area) }});">{{ link.area }}</span>{% endif %}
+      {% if link.area %}<span class="tag tag-area" style="--tag-color: var({{ area_color(link.area) }});">{{ link.area }}</span>{% endif %}
       {% for t in link.tags %}<span class="tag" style="--tag-color: var({{ tag_color(t.name) }});">{{ t.name }}</span>{% endfor %}
     </div>
 

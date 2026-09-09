@@ -140,3 +140,92 @@ async def test_catalog_search_matches_what_a_person_wrote(db_session, workspace_
 
     missing = authed_client.get("/?mode=all&q=совершенно другое")
     assert f'id="link-{link.id}"' not in missing.text
+
+
+async def test_bulk_marks_selected_reviewed_and_drops_them_from_inbox(
+    db_session, workspace_id, authed_client
+):
+    first = await _make_link(db_session, workspace_id, url="https://a.com")
+    second = await _make_link(db_session, workspace_id, url="https://b.com")
+    untouched = await _make_link(db_session, workspace_id, url="https://c.com")
+
+    resp = authed_client.post(
+        "/api/links/bulk?mode=inbox",
+        data={"action": "reviewed", "ids": [first.id, second.id]},
+        headers={"HX-Request": "true", "HX-Current-URL": "http://test/?mode=inbox"},
+    )
+    assert resp.status_code == 200
+    assert "Применено к 2 записям" in resp.text
+    assert f'id="link-{first.id}"' not in resp.text
+    assert f'id="link-{untouched.id}"' in resp.text
+
+    # Счётчики вкладок приезжают тем же ответом — иначе число рядом с Inbox
+    # врёт до перезагрузки страницы.
+    assert 'id="cat-modes"' in resp.text
+
+
+async def test_bulk_scope_all_clears_the_whole_filter(db_session, workspace_id, authed_client):
+    """«Отметить всё разобранным» относится ко всей выборке, а не к странице.
+
+    Миграция намеренно не проставляла разбор задним числом, поэтому Inbox
+    открывается полным; обнулить его должно быть одно осознанное действие."""
+    for i in range(25):
+        await _make_link(db_session, workspace_id, url=f"https://bulk{i}.com")
+
+    resp = authed_client.post(
+        "/api/links/bulk?mode=inbox",
+        data={"action": "reviewed", "scope": "all"},
+        headers={"HX-Request": "true", "HX-Current-URL": "http://test/?mode=inbox"},
+    )
+    assert resp.status_code == 200
+    assert "Применено к 25 записям" in resp.text
+    # Ни одной неразобранной не осталось, включая те, что были за пределами
+    # первой страницы.
+    assert "Разобрано всё" in authed_client.get("/?mode=inbox").text
+
+
+async def test_bulk_scope_all_respects_the_active_filter(db_session, workspace_id, authed_client):
+    """Кнопка обещает «всё в этом фильтре», а не «всё вообще»."""
+    keep = await _make_link(db_session, workspace_id, url="https://keep.com")
+    sweep = await _make_link(db_session, workspace_id, url="https://sweep.com", area="ai")
+
+    authed_client.post(
+        "/api/links/bulk?mode=inbox&area=ai",
+        data={"action": "reviewed", "scope": "all"},
+        headers={"HX-Request": "true", "HX-Current-URL": "http://test/?mode=inbox&area=ai"},
+    )
+
+    inbox = authed_client.get("/?mode=inbox").text
+    assert f'id="link-{keep.id}"' in inbox
+    assert f'id="link-{sweep.id}"' not in inbox
+
+
+async def test_bulk_rejects_an_unknown_action(db_session, workspace_id, authed_client):
+    link = await _make_link(db_session, workspace_id, url="https://a.com")
+    resp = authed_client.post(
+        "/api/links/bulk?mode=inbox",
+        data={"action": "delete-everything", "ids": [link.id]},
+        headers={"HX-Request": "true"},
+    )
+    assert resp.status_code == 422
+
+
+async def test_bulk_cannot_touch_another_workspace(db_session, workspace_id, authed_client):
+    """ids приходят из формы, то есть от клиента — чужую запись по номеру
+    достать не должно."""
+    from db.models import Workspace
+
+    other = Workspace(name="Чужая команда")
+    db_session.add(other)
+    await db_session.commit()
+    await db_session.refresh(other)
+    foreign = await _make_link(db_session, other.id, url="https://foreign.com")
+
+    authed_client.post(
+        "/api/links/bulk?mode=inbox",
+        data={"action": "reviewed", "ids": [foreign.id]},
+        headers={"HX-Request": "true", "HX-Current-URL": "http://test/?mode=inbox"},
+    )
+
+    await db_session.refresh(foreign)
+    assert foreign.reviewed_at is None

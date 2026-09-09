@@ -1,16 +1,54 @@
 <div id="link-{{ link.id }}">
   <h1>{{ link.title or link.url }}</h1>
   <p><a href="/links/{{ link.id }}/visit" target="_blank" rel="noopener" class="source-url">{{ link.url }}</a></p>
-  {% if link.description %}<p>{{ link.description }}</p>{% endif %}
+  {% if link.description %}<p class="cat-desc" style="font-size: 13.5px;">{{ link.description }}</p>{% endif %}
+
   <div class="tags">
-    {% if link.area %}<span class="tag" style="--tag-color: var({{ area_color(link.area) }});">{{ link.area }}</span>{% endif %}
+    {% if link.area %}<span class="tag tag-area" style="--tag-color: var({{ area_color(link.area) }});">{{ link.area }}</span>{% endif %}
     {% for t in link.tags %}<span class="tag" style="--tag-color: var({{ tag_color(t.name) }});">{{ t.name }}</span>{% endfor %}
   </div>
-  <p class="card-meta">
-    {{ link.click_count }} {{ clicks_label(link.click_count) }}
-    {% if link.click_count >= 3 %}<span class="badge">Popular</span>{% endif %}
-  </p>
-  <div class="row-actions" style="margin-top: 12px;">
-    <button class="btn" hx-get="/links/{{ link.id }}/detail-edit-form" hx-target="#link-{{ link.id }}" hx-swap="outerHTML">Edit</button>
+
+  {# Оценка машины и оценка человека — рядом и подписаны. Расхождение между
+     ними и есть полезный сигнал, поэтому в одно число они не сводятся. #}
+  <div class="detail-scores">
+    <div class="detail-score">
+      <span class="score-label">Auto · usefulness</span>
+      {% if link.usefulness_score is not none %}
+        {% set b = link.usefulness_breakdown or {} %}
+        <span class="detail-score-value num">{{ "%.0f"|format(link.usefulness_score) }}/10</span>
+        <span class="detail-score-note">depth {{ b.depth }}/4 · novelty {{ b.novelty }}/3 · actionability {{ b.actionability }}/3</span>
+        <span class="detail-score-note">оценка GPT{% if link.processed_at %} от {{ link.processed_at.strftime('%d.%m.%Y') }}{% endif %}, не пересчитывается</span>
+      {% else %}
+        <span class="detail-score-value num">—</span>
+        <span class="detail-score-note">не оценивалась</span>
+      {% endif %}
+    </div>
+
+    <div class="detail-score">
+      <span class="score-label">Команда</span>
+      <span class="detail-score-value num">{{ link.unique_senders }} чел · {{ link.source_count }} раз</span>
+      <span class="detail-score-note">{{ link.click_count }} {{ clicks_label(link.click_count) }} с дашборда</span>
+    </div>
+
+    <div class="detail-score">
+      <span class="score-label">Человек</span>
+      <span class="detail-score-value">{{ link.manual_priority.value|capitalize }}</span>
+      <span class="detail-score-note">{{ "протестировано" if link.is_tested else "не тестировали" }}</span>
+    </div>
+
+    <div class="detail-score">
+      <span class="score-label">Разбор</span>
+      <span class="detail-score-value">{{ "разобрано" if link.reviewed_at else "в Inbox" }}</span>
+      {% if link.reviewed_at %}<span class="detail-score-note num">{{ link.reviewed_at.strftime('%d.%m.%Y') }}</span>{% endif %}
+    </div>
+  </div>
+
+  <div class="row-actions">
+    <button class="btn" hx-get="/links/{{ link.id }}/detail-edit-form" hx-target="#link-{{ link.id }}" hx-swap="outerHTML">Править</button>
+    <button class="btn{{ '' if link.reviewed_at else ' btn-primary' }}"
+            hx-patch="/api/links/{{ link.id }}/reviewed?reviewed={{ 'false' if link.reviewed_at else 'true' }}"
+            hx-target="#link-{{ link.id }}" hx-swap="outerHTML">
+      {{ "Вернуть в Inbox" if link.reviewed_at else "Разобрано" }}
+    </button>
   </div>
 </div>

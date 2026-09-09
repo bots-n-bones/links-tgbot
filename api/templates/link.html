@@ -1,20 +1,39 @@
 {% extends "base.html" %}
+{% block title %}{{ link.title or link.url }} — COLLECT{% endblock %}
 {% block content %}
-<a href="/" class="back-link">&larr; back</a>
+<a href="/" class="back-link">&larr; в каталог</a>
 
 {% include "_link_detail_view.html" %}
 
-<h2>Sources</h2>
-<ul class="sources-list">
-  {% for s in link.sources %}
-    <li>{{ s.source_type.value }} — {{ s.chat_title or 'DM' }} — {{ s.sender_name or s.sender_id }} — {{ s.created_at.strftime('%Y-%m-%d %H:%M') }}</li>
-  {% else %}
-    <li>No sources yet.</li>
+<h2>Что писали, когда кидали</h2>
+{% if link.sources %}
+<div class="thread">
+  {% for source in link.sources|sort(attribute="created_at") %}
+    {% set note = message_note(source.message_text) %}
+    <div class="thread-item">
+      <div class="thread-head">
+        <span class="thread-who">{{ source.sender_name or "автор неизвестен" }}</span>
+        {% if source.chat_title %}<span>{{ source.chat_title }}</span>{% endif %}
+        <span class="num">{{ source.created_at.strftime('%d.%m.%Y %H:%M') }}</span>
+        {% if source.forwarded_from %}<span>переслано из {{ source.forwarded_from }}</span>{% endif %}
+      </div>
+      {% if source.reply_to_text %}
+        <p class="thread-context">в ответ на: {{ source.reply_to_text }}</p>
+      {% endif %}
+      {% if note %}
+        <p class="thread-text">{{ note }}</p>
+      {% else %}
+        <p class="thread-empty">Без комментария — прислали одну ссылку.</p>
+      {% endif %}
+    </div>
   {% endfor %}
-</ul>
+</div>
+{% else %}
+  <p class="thread-empty">Источников не записано.</p>
+{% endif %}
 
-<h2>Research report</h2>
+<h2>Research-отчёт</h2>
 <div id="research-result">
-  <button class="btn btn-primary" hx-post="/links/{{ link.id }}/research" hx-target="#research-result" hx-swap="outerHTML">Run research</button>
+  <button class="btn btn-primary" hx-post="/links/{{ link.id }}/research" hx-target="#research-result" hx-swap="outerHTML">Собрать отчёт</button>
 </div>
 {% endblock %}
