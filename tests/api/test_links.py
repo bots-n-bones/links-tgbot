@@ -340,7 +340,7 @@ async def test_index_page_renders(db_session, workspace_id, authed_client):
     resp = authed_client.get("/")
     assert resp.status_code == 200
     assert "Заголовок статьи" in resp.text
-    assert "NOVA-260" in resp.text
+    assert "COLLECT" in resp.text
 
 
 async def test_link_detail_page_renders(db_session, workspace_id, authed_client):

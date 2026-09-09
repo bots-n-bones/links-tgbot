@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Nova-260 — Welcome</title>
+  <title>COLLECT — Welcome</title>
   <link rel="icon" href="/static/img/nova-260.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -12,15 +12,15 @@
     :root {
       color-scheme: dark;
       --bg: #000000;
-      --bg-elevated: #0c0c0c;
-      --bg-elevated-hover: #151515;
+      --panel: #0c0c0c;
+      --panel-raised: #151515;
       --ghost: rgba(244, 242, 236, 0.04);
       --text: #f4f2ec;
       --text-muted: rgba(244, 242, 236, 0.62);
       --text-faint: rgba(244, 242, 236, 0.4);
       --border: rgba(244, 242, 236, 0.14);
       --border-strong: rgba(244, 242, 236, 0.28);
-      --ink: #191917;
+      --accent-ink: #191917;
       --accent: #ff5c45;
       --accent-active: #e04a35;
       --cyan: #00c9cf;
@@ -28,12 +28,12 @@
       --green: #49f7a5;
       --lilac: #c8c2e8;
       --peach: #f8957b;
-      --font-display: "Space Grotesk", Arial, sans-serif;
-      --font-body: "IBM Plex Sans", Inter, Arial, sans-serif;
+      --font-sans: "Space Grotesk", Arial, sans-serif;
+      --font-sans: "IBM Plex Sans", Inter, Arial, sans-serif;
       --font-mono: "IBM Plex Mono", "Space Mono", monospace;
       --radius-sm: 4px;
       --radius-md: 8px;
-      --radius-lg: 12px;
+      --radius-md: 12px;
       --radius-pill: 999px;
     }
     * { box-sizing: border-box; }
@@ -41,14 +41,14 @@
     body {
       background: var(--bg);
       color: var(--text);
-      font-family: var(--font-body);
+      font-family: var(--font-sans);
       font-size: 15px;
       line-height: 1.5;
       letter-spacing: -0.1px;
       overflow-x: hidden;
     }
     a { color: inherit; }
-    h1, h2, h3 { font-family: var(--font-display); font-weight: 500; letter-spacing: -0.5px; margin: 0; }
+    h1, h2, h3 { font-family: var(--font-sans); font-weight: 500; letter-spacing: -0.5px; margin: 0; }
 
     /* --- Aurora background, scoped to the hero stage only --- */
     .hero-stage {
@@ -178,9 +178,9 @@
       flex-direction: column;
       align-items: flex-start;
       height: 100%;
-      background: var(--bg-elevated);
+      background: var(--panel);
       border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
+      border-radius: var(--radius-md);
       padding: 24px 20px;
       text-align: left;
       opacity: 0;
@@ -225,7 +225,7 @@
     }
     .feature-card:hover h3,
     .feature-card:hover p {
-      color: var(--ink);
+      color: var(--accent-ink);
     }
 
     /* --- CTA --- */
@@ -253,13 +253,13 @@
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      font-family: var(--font-body);
+      font-family: var(--font-sans);
       font-size: 14px;
       font-weight: 600;
       padding: 11px 24px;
       border-radius: var(--radius-pill);
       background: var(--accent);
-      color: var(--ink);
+      color: var(--accent-ink);
       border: 1px solid var(--accent);
       text-decoration: none;
       cursor: pointer;
@@ -314,11 +314,11 @@
     <section class="hero">
       <div class="hero-eyebrow">Built for serious work in Telegram</div>
       <div class="brand-row">
-        <img class="brand-mascot" src="/static/img/nova-260.png" alt="Nova-260 mascot">
+        <img class="brand-mascot" src="/static/img/nova-260.png" alt="COLLECT mascot">
         <h1>Welcome</h1>
       </div>
       <p class="hero-sub">
-        Nova-260 turns every link your team drops in Telegram into a searchable,
+        COLLECT turns every link your team drops in Telegram into a searchable,
         tagged, ranked library — plus channel style reports, digests, and a
         RAG assistant that already knows what you've saved.
       </p>

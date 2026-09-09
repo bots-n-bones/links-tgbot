@@ -57,7 +57,7 @@ from worker.tasks import add_research_links, generate_research_report, run_chann
 
 MANUAL_ADD_CHAT_ID = 0  # синтетический chat_id для ссылок, добавленных вручную с дашборда
 
-app = FastAPI(title="Nova-260")
+app = FastAPI(title="COLLECT")
 app.mount("/static", StaticFiles(directory="api/static"), name="static")
 app.add_middleware(SessionMiddleware, secret_key=get_settings().session_secret_key)
 

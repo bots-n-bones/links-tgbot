@@ -3,44 +3,61 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}Nova-260{% endblock %}</title>
+  <title>{% block title %}COLLECT{% endblock %}</title>
   <link rel="icon" href="/static/img/nova-260.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/htmx.org@1.9.10"></script>
   <style>
     :root {
       color-scheme: dark;
 
-      --bg: #000000;
-      --bg-elevated: #0c0c0c;
-      --bg-elevated-hover: #151515;
-      --ghost: rgba(244, 242, 236, 0.04);
+      /* Поверхности: приложение / «дно» / карточка / карточка под курсором */
+      --bg: #111111;
+      --bg-well: #0c0c0c;
+      --panel: #1b1b1b;
+      --panel-raised: #212121;
+      --ghost: rgba(243, 243, 243, 0.04);
 
-      --text: #f4f2ec;
-      --text-muted: rgba(244, 242, 236, 0.62);
-      --text-faint: rgba(244, 242, 236, 0.4);
+      --text: #f3f3f3;
+      --text-muted: #929292;
+      --text-faint: #5f5f5f;
 
-      --border: rgba(244, 242, 236, 0.14);
-      --border-strong: rgba(244, 242, 236, 0.28);
+      --border: #2a2a2a;
+      --border-strong: #3a3a3a;
 
-      --ink: #191917;
-      --accent: #ff5c45;
-      --accent-active: #e04a35;
-      --cyan: #00c9cf;
-      --yellow: #f4d941;
-      --green: #49f7a5;
-      --lilac: #c8c2e8;
-      --peach: #f8957b;
+      /* Акцент применяется редко и по делу: выбранное, новое в Inbox,
+         предупреждение. Больше трёх акцентных пятен на экране — что-то
+         помечено акцентом зря. */
+      --accent: #daff61;
+      --accent-active: #c7eb4e;
+      --accent-ink: #1a2200;
 
-      --font-display: "Space Grotesk", Arial, sans-serif;
-      --font-body: "IBM Plex Sans", Inter, Arial, sans-serif;
-      --font-mono: "IBM Plex Mono", "Space Mono", monospace;
+      --positive: #7dd69a;
+      --negative: #c97a62;
+      --neutral: #929292;
 
-      --radius-sm: 4px;
+      /* Палитра тегов и area — не украшение: на неё завязаны tag_color() и
+         area_color() в api/templates_env.py, цвет тега детерминирован его
+         именем. Приглушена под фон #111111, чтобы чипы не перекрикивали
+         акцент. --chip-ink — тёмный нейтральный текст на цветном чипе. */
+      --cyan: #7ec8cb;
+      --yellow: #d8c95f;
+      --green: #7dd69a;
+      --lilac: #b3ade0;
+      --peach: #e0a288;
+      --chip-ink: #14140f;
+
+      /* Моноширинный — машинное (баллы, метрики, счётчики, даты, id),
+         пропорциональный — человеческое (заголовки, описания, сообщения
+         людей). Смешивать нельзя: это единственный способ отличить факт от
+         формулировки, не читая. */
+      --font-sans: "IBM Plex Sans", Inter, Arial, sans-serif;
+      --font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+
+      --radius-sm: 5px;
       --radius-md: 8px;
-      --radius-lg: 12px;
       --radius-pill: 999px;
     }
 
@@ -49,9 +66,9 @@
     body {
       background: var(--bg);
       color: var(--text);
-      font-family: var(--font-body);
-      font-size: 15px;
-      line-height: 1.5;
+      font-family: var(--font-sans);
+      font-size: 13.5px;
+      line-height: 1.45;
       letter-spacing: -0.1px;
       max-width: 1800px;
       margin: 0;
@@ -61,7 +78,11 @@
 
     a { color: inherit; }
 
-    h1, h2, h3 { font-family: var(--font-display); font-weight: 500; letter-spacing: -0.5px; margin: 0; }
+    /* Числа выравниваются по разрядам — любая колонка чисел, любой
+       счётчик, любой балл получает .num. */
+    .num { font-variant-numeric: tabular-nums; }
+
+    h1, h2, h3 { font-family: var(--font-sans); font-weight: 500; letter-spacing: -0.5px; margin: 0; }
     h1 { font-size: 30px; letter-spacing: -1px; margin-bottom: 14px; }
     h2 { font-size: 16px; margin: 28px 0 12px; }
 
@@ -80,11 +101,11 @@
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      font-family: var(--font-body);
+      font-family: var(--font-sans);
       font-size: 12px;
       font-weight: 500;
       padding: 7px 15px;
-      border-radius: var(--radius-pill);
+      border-radius: var(--radius-sm);
       border: 1px solid var(--border);
       background: transparent;
       color: var(--text-muted);
@@ -95,14 +116,14 @@
     .btn:hover { border-color: var(--border-strong); color: var(--text); }
     .btn-primary {
       background: var(--accent);
-      color: var(--ink);
+      color: var(--accent-ink);
       border-color: var(--accent);
       font-weight: 600;
     }
-    .btn-primary:hover { background: var(--accent-active); border-color: var(--accent-active); color: var(--ink); }
-    .btn:disabled { background: var(--bg-elevated); color: var(--text-faint); cursor: not-allowed; }
+    .btn-primary:hover { background: var(--accent-active); border-color: var(--accent-active); color: var(--accent-ink); }
+    .btn:disabled { background: var(--panel); color: var(--text-faint); cursor: not-allowed; }
 
-    .markdown-block { font-size: 14px; color: var(--text-muted); white-space: pre-wrap; font-family: var(--font-body); line-height: 1.6; }
+    .markdown-block { font-size: 14px; color: var(--text-muted); white-space: pre-wrap; font-family: var(--font-sans); line-height: 1.6; }
 
     /* --- Header --- */
     .site-header {
@@ -115,16 +136,16 @@
     }
     .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
     .brand-mark { width: 34px; height: 34px; flex-shrink: 0; object-fit: contain; }
-    .brand-name { font-family: var(--font-display); font-weight: 600; font-size: 19px; letter-spacing: -0.4px; }
+    .brand-name { font-family: var(--font-mono); font-weight: 600; font-size: 15px; letter-spacing: 0.14em; text-transform: uppercase; }
 
     /* --- Nav: pill-segmented control --- */
     .site-nav {
       display: flex;
       gap: 2px;
       align-items: center;
-      background: var(--bg-elevated);
+      background: var(--panel);
       border: 1px solid var(--border);
-      border-radius: var(--radius-pill);
+      border-radius: var(--radius-sm);
       padding: 4px;
     }
     .site-nav a {
@@ -133,12 +154,12 @@
       text-decoration: none;
       color: var(--text-muted);
       padding: 8px 18px;
-      border-radius: var(--radius-pill);
+      border-radius: var(--radius-sm);
       transition: background 120ms ease, color 120ms ease;
     }
     .site-nav a:hover { color: var(--text); }
-    .site-nav a.active { background: var(--text); color: var(--ink); }
-    .site-nav a.active:hover { color: var(--ink); }
+    .site-nav a.active { background: var(--accent); color: var(--accent-ink); }
+    .site-nav a.active:hover { color: var(--accent-ink); }
 
     .site-auth { display: flex; align-items: center; gap: 8px; margin-left: 16px; }
     .site-auth a { font-size: 13px; color: var(--text-muted); text-decoration: none; }
@@ -155,10 +176,10 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      background: var(--bg-elevated);
+      background: var(--panel);
       border: 1px solid var(--border);
       color: var(--text);
-      font-family: var(--font-display);
+      font-family: var(--font-sans);
       font-size: 11px;
     }
 
@@ -175,11 +196,11 @@
     .header-search { position: relative; flex: 1; max-width: 440px; margin: 0 24px; }
     .header-search input[type="text"] {
       width: 100%;
-      background: var(--bg-elevated);
+      background: var(--panel);
       border: 1px solid var(--border);
       color: var(--text);
       padding: 10px 40px 10px 16px;
-      border-radius: var(--radius-pill);
+      border-radius: var(--radius-sm);
       font: inherit;
       font-size: 13px;
     }
@@ -195,7 +216,7 @@
       border-radius: 50%;
       border: none;
       background: var(--accent);
-      color: var(--ink);
+      color: var(--accent-ink);
       font-size: 14px;
       line-height: 1;
       cursor: pointer;
@@ -215,17 +236,17 @@
       overflow-y: auto;
     }
     .header-search-results:empty { display: none; }
-    .qa-answer { background: var(--bg-elevated-hover); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); padding: 16px 20px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); }
+    .qa-answer { background: var(--panel-raised); border: 1px solid var(--border-strong); border-radius: var(--radius-md); padding: 16px 20px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); }
     .qa-answer p { margin: 0; font-size: 13px; color: var(--text-muted); line-height: 1.6; white-space: pre-wrap; }
 
     /* --- Standalone content block (digest entries, research report) --- */
-    .card { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 18px 20px; margin-bottom: 12px; }
-    .card-title { font-family: var(--font-display); font-weight: 500; font-size: 17px; letter-spacing: -0.2px; }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 18px 20px; margin-bottom: 12px; }
+    .card-title { font-family: var(--font-sans); font-weight: 500; font-size: 17px; letter-spacing: -0.2px; }
     .card-meta { font-family: var(--font-mono); font-size: 11px; color: var(--text-faint); margin: 6px 0 10px; letter-spacing: 0.02em; }
     .card-actions { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
     /* --- Panel (table-style list container) --- */
-    .panel { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-elevated); margin-bottom: 32px; }
+    .panel { border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--panel); margin-bottom: 32px; }
     .panel-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 18px 20px; border-bottom: 1px solid var(--border); }
     .panel-title { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); }
     .panel-note { padding: 14px 20px; font-size: 13px; color: var(--text-muted); border-bottom: 1px solid var(--border); }
@@ -243,7 +264,7 @@
       border: 1px solid var(--border);
       color: var(--text);
       padding: 8px 32px 8px 14px;
-      border-radius: var(--radius-pill);
+      border-radius: var(--radius-sm);
       font: inherit;
       font-size: 13px;
       line-height: 1.2;
@@ -262,7 +283,7 @@
       border: 1px solid var(--border);
       color: var(--text);
       padding: 8px 14px;
-      border-radius: var(--radius-pill);
+      border-radius: var(--radius-sm);
       font-size: 13px;
       line-height: 1;
     }
@@ -287,7 +308,7 @@
       min-width: 200px;
       max-height: 280px;
       overflow-y: auto;
-      background: var(--bg-elevated-hover);
+      background: var(--panel-raised);
       border: 1px solid var(--border-strong);
       border-radius: var(--radius-md);
       padding: 6px;
@@ -332,7 +353,7 @@
     .row-item:last-child { border-bottom: none; }
     .row-item:hover { background: var(--ghost); }
     .row-main { min-width: 0; flex: 1 1 320px; }
-    .row-title { font-family: var(--font-display); font-weight: 500; font-size: 16px; letter-spacing: -0.2px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+    .row-title { font-family: var(--font-sans); font-weight: 500; font-size: 16px; letter-spacing: -0.2px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
     .row-title a { text-decoration: underline; text-decoration-color: var(--border-strong); text-underline-offset: 3px; }
     .row-title a:hover { color: var(--accent); text-decoration-color: var(--accent); }
     .row-meta { font-family: var(--font-mono); font-size: 11px; color: var(--text-faint); margin: 6px 0 0; letter-spacing: 0.02em; }
@@ -359,7 +380,7 @@
     .data-table tr:hover td { background: var(--ghost); }
     .data-table .col-title { width: 18%; min-width: 180px; }
     .data-table .col-title a {
-      font-family: var(--font-display);
+      font-family: var(--font-sans);
       font-weight: 500;
       font-size: 15px;
       text-decoration: underline;
@@ -405,7 +426,7 @@
       border: 1px solid var(--tag-color, var(--border));
       color: var(--text);
       padding: 4px 22px 4px 10px;
-      border-radius: var(--radius-pill);
+      border-radius: var(--radius-sm);
       font: inherit;
       font-size: 12px;
       cursor: pointer;
@@ -421,19 +442,19 @@
     /* --- Voice DNA report (TZ_CHANNELS.md §3.5) --- */
     .disclaimer { font-family: var(--font-mono); font-size: 11px; color: var(--text-faint); line-height: 1.5; margin: 0 0 20px; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius-md); }
     .report-tabs { display: flex; gap: 6px; margin-bottom: 20px; flex-wrap: wrap; }
-    .report-tab { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 8px 16px; cursor: pointer; }
-    .report-tab.active { color: var(--ink); background: var(--text); border-color: var(--text); }
+    .report-tab { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 16px; cursor: pointer; }
+    .report-tab.active { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
     .report-tab-panel { display: none; }
     .report-tab-panel.active { display: block; }
     .kpi-hero { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; margin-bottom: 20px; }
-    .kpi-tile { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px 18px; }
-    .kpi-tile .kpi-value { font-family: var(--font-display); font-size: 40px; font-weight: 500; letter-spacing: -0.5px; line-height: 1.1; }
+    .kpi-tile { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px 18px; }
+    .kpi-tile .kpi-value { font-family: var(--font-sans); font-size: 40px; font-weight: 500; letter-spacing: -0.5px; line-height: 1.1; }
     .kpi-tile .kpi-label { font-family: var(--font-mono); font-size: 11px; color: var(--text-faint); margin-top: 6px; letter-spacing: 0.02em; }
     .chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-bottom: 20px; }
-    .chart-card { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px 18px; min-height: 280px; }
+    .chart-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px 18px; min-height: 280px; }
     .chart-card canvas { max-height: 240px; }
     .report-prose { line-height: 1.6; margin: 0 0 14px; }
-    .report-prose h4 { font-family: var(--font-display); font-size: 14px; margin: 0 0 6px; color: var(--text-muted); }
+    .report-prose h4 { font-family: var(--font-sans); font-size: 14px; margin: 0 0 6px; color: var(--text-muted); }
     .insight-list { margin: 0 0 20px; padding-left: 20px; line-height: 1.6; }
     .insight-list li { margin-bottom: 6px; }
     .under-the-hood-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 20px; }
@@ -458,11 +479,11 @@
       bottom: calc(100% + 8px);
       right: 0;
       width: 220px;
-      background: var(--bg-elevated-hover);
+      background: var(--panel-raised);
       border: 1px solid var(--border-strong);
       border-radius: var(--radius-md);
       padding: 10px 12px;
-      font-family: var(--font-body);
+      font-family: var(--font-sans);
       font-size: 12px;
       font-weight: 400;
       color: var(--text-muted);
@@ -477,10 +498,10 @@
     .preview-dialog {
       width: min(640px, 92vw);
       max-height: 85vh;
-      background: var(--bg-elevated);
+      background: var(--panel);
       color: var(--text);
       border: 1px solid var(--border-strong);
-      border-radius: var(--radius-lg);
+      border-radius: var(--radius-md);
       padding: 0;
       overflow: hidden;
     }
@@ -506,8 +527,8 @@
     .tag {
       display: inline-block;
       background: var(--tag-color, var(--lilac));
-      color: var(--ink);
-      border-radius: var(--radius-pill);
+      color: var(--chip-ink);
+      border-radius: var(--radius-sm);
       padding: 3px 11px;
       font-size: 12px;
       font-weight: 500;
@@ -539,7 +560,7 @@
     .htmx-indicator { opacity: 0; transition: opacity 150ms ease-in; font-family: var(--font-mono); font-size: 11px; color: var(--text-faint); align-self: center; }
     .htmx-request .htmx-indicator, .htmx-request.htmx-indicator { opacity: 1; }
 
-    pre { font-family: var(--font-body); }
+    pre { font-family: var(--font-mono); }
 
     /* --- Version table (changelog page) --- */
     .version-table { width: 100%; border-collapse: collapse; }
@@ -569,8 +590,7 @@
 <body>
   <header class="site-header">
     <a href="/" class="brand">
-      <img class="brand-mark" src="/static/img/nova-260.png" alt="Nova-260">
-      <span class="brand-name">NOVA-260</span>
+      <span class="brand-name">COLLECT</span>
     </a>
     <div class="header-search">
       <form hx-post="/ask" hx-target="#header-search-results" hx-swap="innerHTML" hx-indicator="#header-search-loading">
@@ -611,7 +631,7 @@
   </header>
   {% block content %}{% endblock %}
   <footer>
-    <span>Nova-260 · Team link collector</span>
+    <span>COLLECT · Team knowledge base</span>
     <span>Version <a href="/changelog">v{{ current_version }}</a></span>
   </footer>
 </body>

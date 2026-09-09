@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Parsing @{{ job.channel_username }} — Nova-260{% endblock %}
+{% block title %}Parsing @{{ job.channel_username }} — COLLECT{% endblock %}
 {% block content %}
 <div class="eyebrow">Channels</div>
 <h1>Parsing @{{ job.channel_username }}</h1>
@@ -17,7 +17,7 @@
   <div class="wizard-progress-bar"><div class="wizard-progress-fill" id="parse-progress-fill" style="width: 0%;"></div></div>
   <p id="parse-progress-text" class="card-meta" style="margin: 10px 0 0;">0 / {{ job.progress_total or '?' }} posts</p>
 
-  <canvas id="parse-race-canvas" width="600" height="200" style="width: 100%; max-width: 600px; display: block; margin: 20px auto 0; border-radius: var(--radius-md); background: var(--bg-elevated-hover);"></canvas>
+  <canvas id="parse-race-canvas" width="600" height="200" style="width: 100%; max-width: 600px; display: block; margin: 20px auto 0; border-radius: var(--radius-md); background: var(--panel-raised);"></canvas>
   <p class="card-meta" style="text-align: center; margin: 6px 0 0;">Use arrow keys or WASD to steer the snake — its speed follows the real scrape progress.</p>
 
   <div id="parse-done-actions" style="display: none; margin-top: 16px; text-align: center;">
