@@ -556,3 +556,39 @@ async def test_attribution_recorded_for_a_repeat_of_a_known_link(
     assert len(sources) == 2
     assert sources[1].sender_name == "Вика"
     assert sources[1].chat_title == "Общий чат"
+
+
+async def test_reply_info_carries_link_id_for_the_chat_buttons(
+    db_session, workspace_id, monkeypatch
+):
+    """Кнопки разметки под ответом бота адресуют ссылку по id.
+
+    Без него клавиатура не строится, и разметить прямо в чате нельзя —
+    ответ молча деградирует до простого текста, что незаметно."""
+    _patch_clients(monkeypatch)
+    monkeypatch.setattr(tasks_module, "fetch_metadata", _fake_fetch_ok)
+
+    new = await _add_raw_message(
+        db_session, workspace_id, chat_id=1, message_id=1, text="https://example.com/a"
+    )
+    await tasks_module._process_raw_message_async(new.id)
+    created = (await db_session.execute(select(Link))).scalars().one()
+
+    # Повтор той же ссылки идёт другой веткой — id должен быть и там.
+    repeat = await _add_raw_message(
+        db_session, workspace_id, chat_id=2, message_id=2, text="https://example.com/a"
+    )
+    await tasks_module._process_raw_message_async(repeat.id)
+
+    from bot.keyboards import link_actions_keyboard, parse_link_cb
+
+    keyboard = link_actions_keyboard(created.id, "https://collect.example")
+    callbacks = [
+        parse_link_cb(button.callback_data)
+        for row in keyboard.inline_keyboard
+        for button in row
+        if button.callback_data
+    ]
+    assert all(parsed is not None and parsed[1] == created.id for parsed in callbacks)
+    # Последний ряд — ссылка на дашборд, у неё url вместо callback_data.
+    assert keyboard.inline_keyboard[-1][0].url.endswith(f"/links/{created.id}")
