@@ -9,12 +9,25 @@
   <label class="cat-pick" aria-label="Выбрать">
     <input type="checkbox" name="ids" value="{{ link.id }}" form="bulk-form">
   </label>
+  {% if post and post.photo_url %}
+    <img class="cat-thumb" src="{{ post.photo_url }}" alt="" loading="lazy" referrerpolicy="no-referrer">
+  {% endif %}
   <div class="cat-body">
     <div class="cat-head">
       <a class="cat-title" href="/links/{{ link.id }}/visit" target="_blank" rel="noopener">{{ link.title or link.url }}</a>
       {% if link.click_count >= 3 %}<span class="badge">Popular</span>{% endif %}
-      {% if link.status.value != "done" %}<span class="badge" style="color: var(--negative); border-color: var(--negative);">{{ link.status.value }}</span>{% endif %}
-      <span class="cat-origin">{{ link.domain or '' }}</span>
+      {% if link.status.value != "done" %}
+        <span class="badge badge-bad" title="{{ link.fetch_error or '' }}">
+          {{ "не загрузилось" if link.status.value in ("failed", "fetch_failed") else link.status.value }}
+        </span>
+      {% endif %}
+      {% if link.id in (report_link_ids or []) %}
+        <span class="badge badge-quiet" title="По этой ссылке уже собирали research-отчёт">отчёт есть</span>
+      {% endif %}
+      <span class="cat-origin">
+        {% if link.favicon_url %}<img class="favicon" src="{{ link.favicon_url }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% endif %}
+        {{ link.domain or '' }}
+      </span>
     </div>
 
     {% set rendered = [] %}
@@ -51,9 +64,19 @@
     </div>
 
     <div class="cat-foot">
-      <span class="num">{{ link.created_at.strftime('%d.%m.%Y') }}</span>
-      {% if link.reviewed_at %}<span>разобрано</span>{% else %}<span style="color: var(--accent);">не разобрано</span>{% endif %}
+      <span class="num" title="{{ link.created_at.strftime('%d.%m.%Y %H:%M') }}">{{ age_label(link.created_at) }}</span>
+      {# Безличная форма намеренно: род глагола по имени не выводится, и
+         «разобрал Аня» — ровно та ошибка, которую это порождает. #}
+      {% if link.reviewed_at %}
+        <span>разобрано{% if link.reviewed_by_user_id in (user_names or {}) %} · {{ user_names[link.reviewed_by_user_id] }}{% endif %}</span>
+      {% else %}
+        <span style="color: var(--accent);">не разобрано</span>
+      {% endif %}
+      {% if link.added_by_user_id in (user_names or {}) and not link.sources %}
+        <span>добавлено · {{ user_names[link.added_by_user_id] }}</span>
+      {% endif %}
       {% if post %}<a href="{{ post.post_url }}" target="_blank" rel="noopener">оригинальный пост →</a>{% endif %}
+      {% if link.fetch_error %}<span style="color: var(--negative);">{{ link.fetch_error|truncate(60) }}</span>{% endif %}
     </div>
   </div>
 

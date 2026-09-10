@@ -22,9 +22,12 @@ from db.models import (
     Collection,
     Link,
     LinkSource,
+    LinkStatus,
     LinkTag,
     ManualPriority,
+    ResearchReport,
     Tag,
+    User,
 )
 from db.session import get_sessionmaker
 from shared.tag_normalizer import normalize_tags
@@ -111,6 +114,7 @@ async def query_links(
     sender: str | None = None,
     q: str | None = None,
     source_type: str | None = None,
+    broken: bool = False,
     sort: str | None = None,
     page: int = 1,
     page_size: int = PAGE_SIZE,
@@ -166,6 +170,11 @@ async def query_links(
         conditions.append(
             Link.id.in_(select(LinkSource.link_id).where(LinkSource.source_type == source_type))
         )
+    if broken:
+        # Ссылки, которые не удалось загрузить, иначе не найти: они выглядят
+        # как обычные записи без описания и тегов, и сломанный источник
+        # молча оседает в каталоге.
+        conditions.append(Link.status.in_([LinkStatus.failed, LinkStatus.fetch_failed]))
     if q:
         like = f"%{q}%"
         conditions.append(
@@ -295,6 +304,38 @@ async def list_all_tags(session: AsyncSession, workspace_id: int) -> list[tuple[
     return list((await session.execute(stmt)).all())
 
 
+async def get_report_link_ids(
+    session: AsyncSession, workspace_id: int, link_ids: list[int]
+) -> set[int]:
+    """По каким ссылкам уже собирали research-отчёт.
+
+    Отчёт стоит денег и минут, и «мы это уже исследовали» — ровно то, что
+    нужно знать до того, как нажать «собрать отчёт» второй раз."""
+    if not link_ids:
+        return set()
+    rows = await session.execute(
+        select(ResearchReport.link_id).where(
+            ResearchReport.workspace_id == workspace_id,
+            ResearchReport.link_id.in_(link_ids),
+        )
+    )
+    return {row[0] for row in rows}
+
+
+async def get_user_names(session: AsyncSession, user_ids: list[int]) -> dict[int, str]:
+    """Имена по id — для подписей «добавил» и «разобрал».
+
+    «Разобрано» без автора превращается в состояние, за которое никто не
+    отвечает, поэтому имя показывается рядом."""
+    ids = [uid for uid in user_ids if uid]
+    if not ids:
+        return {}
+    rows = await session.execute(
+        select(User.id, User.full_name, User.username).where(User.id.in_(ids))
+    )
+    return {row[0]: (row[1] or row[2] or f"#{row[0]}") for row in rows}
+
+
 async def list_all_areas(session: AsyncSession, workspace_id: int) -> list[tuple[str, int]]:
     """Area со счётчиками. В сайдбаре чип без числа бесполезен: он не
     отвечает на «есть ли там что-нибудь» до нажатия."""
@@ -305,6 +346,22 @@ async def list_all_areas(session: AsyncSession, workspace_id: int) -> list[tuple
         .order_by(func.count().desc())
     )
     return list((await session.execute(stmt)).all())
+
+
+async def count_broken(session: AsyncSession, workspace_id: int) -> int:
+    """Сколько ссылок не удалось загрузить. Ноль — значит фильтр можно не
+    показывать вовсе."""
+    return (
+        await session.scalar(
+            select(func.count())
+            .select_from(Link)
+            .where(
+                Link.workspace_id == workspace_id,
+                Link.is_hidden.is_(False),
+                Link.status.in_([LinkStatus.failed, LinkStatus.fetch_failed]),
+            )
+        )
+    ) or 0
 
 
 async def last_capture_at(session: AsyncSession, workspace_id: int) -> datetime | None:

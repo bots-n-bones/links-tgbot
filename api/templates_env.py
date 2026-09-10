@@ -1,5 +1,6 @@
 import hashlib
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi.templating import Jinja2Templates
@@ -37,6 +38,32 @@ def message_note(text: str | None) -> str | None:
     return without_url.strip(" \t\n\r\u2014\u2013-:,") or None
 
 
+def age_label(moment: datetime | None) -> str:
+    """Возраст словами: «вчера» и «3 дня назад» читаются быстрее даты.
+
+    Точная дата остаётся в title — она нужна редко, а сканировать список
+    приходится всё время."""
+    if moment is None:
+        return "—"
+    now = datetime.now(UTC)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=UTC)
+    days = (now - moment).days
+    if days <= 0:
+        return "сегодня"
+    if days == 1:
+        return "вчера"
+    if days < 7:
+        return f"{days} дня назад" if days < 5 else f"{days} дней назад"
+    if days < 31:
+        weeks = days // 7
+        return "неделю назад" if weeks == 1 else f"{weeks} недели назад"
+    months = days // 30
+    if months < 12:
+        return "месяц назад" if months == 1 else f"{months} мес. назад"
+    return moment.strftime("%d.%m.%Y")
+
+
 def clicks_label(count: int) -> str:
     """Русские формы множественного числа для счётчика переходов.
 
@@ -67,6 +94,7 @@ templates.env.globals["tag_color"] = tag_color
 templates.env.globals["area_color"] = area_color
 templates.env.globals["clicks_label"] = clicks_label
 templates.env.globals["message_note"] = message_note
+templates.env.globals["age_label"] = age_label
 templates.env.globals["current_version"] = CURRENT_VERSION
 templates.env.globals["area_choices"] = AREA_CHOICES
 templates.env.globals["swatch_colors"] = _TAG_COLOR_VARS

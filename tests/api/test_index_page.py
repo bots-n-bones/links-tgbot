@@ -13,8 +13,10 @@ async def _make_link(
         url=url,
         normalized_url=url,
         url_hash=hashlib.sha256(url.encode()).hexdigest(),
-        title=f"Title for {url}",
-        status=LinkStatus.done,
+        # title и status можно переопределить: тестам про «не загрузилось»
+        # и про заголовки нужны свои значения.
+        title=kwargs.pop("title", f"Title for {url}"),
+        status=kwargs.pop("status", LinkStatus.done),
         created_at=now,
         **kwargs,
     )
@@ -232,3 +234,71 @@ async def test_bulk_cannot_touch_another_workspace(db_session, workspace_id, aut
 
     await db_session.refresh(foreign)
     assert foreign.reviewed_at is None
+
+
+async def _make_user(db_session, full_name: str):
+    from db.models import User
+
+    user = User(telegram_id=770077, full_name=full_name)
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    return user
+
+
+async def test_card_shows_the_source_icon_and_who_sorted_it(
+    db_session, workspace_id, authed_client
+):
+    """Поля, которые лежали в базе и не показывались нигде: фавиконка
+    источника и кто разобрал запись."""
+    from datetime import UTC, datetime
+
+    user = await _make_user(db_session, "Разборщик")
+    await _make_link(
+        db_session,
+        workspace_id,
+        url="https://a.com",
+        favicon_url="https://a.com/favicon.ico",
+        reviewed_at=datetime.now(UTC),
+        reviewed_by_user_id=user.id,
+    )
+
+    page = authed_client.get("/?mode=all").text
+    assert "https://a.com/favicon.ico" in page
+    # Безличная форма намеренно: род глагола по имени не выводится, и
+    # «разобрал Аня» — ровно та ошибка, которую это порождает.
+    assert "разобрано · Разборщик" in page
+
+
+async def test_failed_link_says_why_it_failed(db_session, workspace_id, authed_client):
+    """Бейдж без причины — тупик: непонятно, чинить ссылку или выбрасывать."""
+    from db.models import LinkStatus
+
+    await _make_link(
+        db_session,
+        workspace_id,
+        url="https://b.com",
+        status=LinkStatus.fetch_failed,
+        fetch_error="403 Forbidden",
+    )
+
+    page = authed_client.get("/?mode=all").text
+    assert "не загрузилось" in page
+    assert "403 Forbidden" in page
+
+
+async def test_broken_filter_finds_links_that_failed_to_load(
+    db_session, workspace_id, authed_client
+):
+    """Не загрузившиеся ссылки иначе не найти: они выглядят обычными
+    записями без описания и тегов, и сломанный источник молча оседает."""
+    from db.models import LinkStatus
+
+    ok = await _make_link(db_session, workspace_id, url="https://ok.com")
+    bad = await _make_link(
+        db_session, workspace_id, url="https://bad.com", status=LinkStatus.fetch_failed
+    )
+
+    page = authed_client.get("/?mode=all&broken=1").text
+    assert f'id="link-{bad.id}"' in page
+    assert f'id="link-{ok.id}"' not in page

@@ -682,6 +682,13 @@
     .view-drop { background: none; border: none; color: var(--text-faint); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 4px; }
     .view-drop:hover { color: var(--negative); }
 
+    .favicon { width: 12px; height: 12px; border-radius: 2px; vertical-align: -1px; margin-right: 4px; object-fit: contain; }
+    /* Превью связанного поста: единственная картинка на карточке, поэтому
+       маленькая и слева — она помогает узнать запись, а не украшает её. */
+    .cat-thumb { width: 56px; height: 56px; object-fit: cover; border-radius: var(--radius-sm); flex: none; border: 1px solid var(--border); }
+    .badge-bad { color: var(--negative); border-color: var(--negative); }
+    .badge-quiet { color: var(--text-faint); border-color: var(--border-strong); }
+
     /* --- Массовые действия --- */
     .cat-pick { flex: 0 0 auto; padding-top: 2px; }
     .cat-pick input { width: 15px; height: 15px; cursor: pointer; accent-color: var(--accent); }

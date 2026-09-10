@@ -76,6 +76,20 @@
     </div>
   </details>
 
+  {% if broken_count %}
+  <details class="fgroup" open>
+    <summary>Проблемы {{ chev() }}</summary>
+    <div class="foptions">
+      {# Не загрузившиеся ссылки иначе не найти: они выглядят обычными
+         записями без описания и тегов, и сломанный источник молча оседает
+         в каталоге. #}
+      <a class="{{ 'active' if broken else '' }}" href="{{ filter_url('broken', '' if broken else '1') }}">
+        <span>Не загрузилось</span><span class="count">{{ broken_count }}</span>
+      </a>
+    </div>
+  </details>
+  {% endif %}
+
   <details class="fgroup" open>
     <summary>Виды {{ chev() }}</summary>
     {% include "_catalog_views.html" %}

@@ -25,11 +25,14 @@ from api.routes.links import (
     DEFAULT_MODE,
     MODE_DEFAULT_SORT,
     catalog_mode_counts,
+    count_broken,
     count_digest_history,
     get_link_detail,
+    get_report_link_ids,
+    get_user_names,
     last_capture_at,
-    list_all_chats,
     list_all_areas,
+    list_all_chats,
     list_all_senders,
     list_all_tags,
     list_catalog_views,
@@ -113,6 +116,9 @@ def _catalog_context(
     q: str | None,
     sort: str | None,
     posts_by_link: dict,
+    broken: bool = False,
+    report_link_ids: set | None = None,
+    user_names: dict | None = None,
     extra: dict | None = None,
 ) -> dict:
     filters = {"mode": mode}
@@ -122,6 +128,7 @@ def _catalog_context(
         ("chat", chat),
         ("sender", sender),
         ("q", q),
+        ("broken", "1" if broken else None),
         ("sort", sort),
     ):
         if value:
@@ -139,6 +146,9 @@ def _catalog_context(
         "chat": chat,
         "sender": sender,
         "q": q,
+        "broken": broken,
+        "report_link_ids": report_link_ids or set(),
+        "user_names": user_names or {},
         "sort": sort,
         # Режим задаёт сортировку по умолчанию, и выпадающий список должен
         # показывать ту, по которой список реально отсортирован. Иначе при
@@ -162,6 +172,7 @@ async def index(
     chat: str | None = None,
     sender: str | None = None,
     q: str | None = None,
+    broken: bool = False,
     sort: str | None = None,
     page: int = 1,
     workspace_id: int | None = Depends(get_current_workspace_id),
@@ -182,6 +193,7 @@ async def index(
             chat=chat,
             sender=sender,
             q=q,
+            broken=broken,
             sort=sort,
             page=page,
         )
@@ -191,9 +203,15 @@ async def index(
         senders = await list_all_senders(session, workspace_id)
         views = await list_catalog_views(session, workspace_id)
         areas = await list_all_areas(session, workspace_id)
+        broken_count = await count_broken(session, workspace_id)
         captured_at = await last_capture_at(session, workspace_id)
-        posts_by_link = await get_posts_by_link_ids(
-            session, workspace_id, [link.id for link in result.items]
+        page_ids = [link.id for link in result.items]
+        posts_by_link = await get_posts_by_link_ids(session, workspace_id, page_ids)
+        report_link_ids = await get_report_link_ids(session, workspace_id, page_ids)
+        user_names = await get_user_names(
+            session,
+            [link.added_by_user_id for link in result.items]
+            + [link.reviewed_by_user_id for link in result.items],
         )
 
     return templates.TemplateResponse(
@@ -209,6 +227,9 @@ async def index(
             q=q,
             sort=sort,
             posts_by_link=posts_by_link,
+            broken=broken,
+            report_link_ids=report_link_ids,
+            user_names=user_names,
             extra={
                 "all_tags": all_tags,
                 "mode_counts": mode_counts,
@@ -217,6 +238,7 @@ async def index(
                 "views": views,
                 "areas": areas,
                 "last_capture_at": captured_at,
+                "broken_count": broken_count,
             },
         ),
     )
@@ -231,6 +253,7 @@ async def partial_links(
     chat: str | None = None,
     sender: str | None = None,
     q: str | None = None,
+    broken: bool = False,
     sort: str | None = None,
     page: int = 1,
     workspace_id: int | None = Depends(get_current_workspace_id),
@@ -251,11 +274,17 @@ async def partial_links(
             chat=chat,
             sender=sender,
             q=q,
+            broken=broken,
             sort=sort,
             page=page,
         )
-        posts_by_link = await get_posts_by_link_ids(
-            session, workspace_id, [link.id for link in result.items]
+        page_ids = [link.id for link in result.items]
+        posts_by_link = await get_posts_by_link_ids(session, workspace_id, page_ids)
+        report_link_ids = await get_report_link_ids(session, workspace_id, page_ids)
+        user_names = await get_user_names(
+            session,
+            [link.added_by_user_id for link in result.items]
+            + [link.reviewed_by_user_id for link in result.items],
         )
 
     return templates.TemplateResponse(
@@ -271,6 +300,9 @@ async def partial_links(
             q=q,
             sort=sort,
             posts_by_link=posts_by_link,
+            broken=broken,
+            report_link_ids=report_link_ids,
+            user_names=user_names,
         ),
     )
 
