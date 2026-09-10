@@ -87,6 +87,12 @@ class Link(Base):
         Enum(ManualPriority, name="manual_priority"), default=ManualPriority.normal
     )
     is_tested: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Разобрана ли ссылка человеком (режим Inbox каталога). NULL — ещё нет.
+    # Признак заводится явным полем, а не выводится из того, редактировали
+    # запись или нет: «никто не притрагивался» и «посмотрели и решили ничего
+    # не менять» — разные состояния, и второе тоже разбор.
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reviewed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     embedding: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
     added_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -133,6 +139,14 @@ class RawMessage(Base):
     message_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     sender_id: Mapped[int | None] = mapped_column(BigInteger)
     text: Mapped[str | None] = mapped_column(Text)
+    # Кто и откуда прислал — переносится в LinkSource при обработке
+    # (worker/tasks.py). До появления этих колонок поля LinkSource
+    # существовали, но у ссылок всегда оставались пустыми: заполнял их
+    # только захват постов, который идёт мимо raw_messages.
+    sender_name: Mapped[str | None] = mapped_column(Text)
+    chat_title: Mapped[str | None] = mapped_column(Text)
+    reply_to_text: Mapped[str | None] = mapped_column(Text)
+    forwarded_from: Mapped[str | None] = mapped_column(Text)
     entities_json: Mapped[dict | None] = mapped_column(JSONB)
     source_type: Mapped[SourceType] = mapped_column(
         Enum(SourceType, name="source_type"), nullable=False
@@ -252,6 +266,26 @@ class Collection(Base):
     # Внешние статьи, найденные веб-поиском для daily/weekly digest (не наши
     # сохранённые ссылки) — [{"title": str, "url": str, "description": str}, ...]
     articles: Mapped[list | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CatalogView(Base):
+    """Сохранённый вид каталога — набор фильтров под именем.
+
+    Параметры лежат одним JSON, а не колонками под каждый фильтр: набор
+    фильтров каталога будет меняться, и вид не должен требовать миграции
+    при каждом новом фильтре."""
+
+    __tablename__ = "catalog_views"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "name", name="uq_catalog_views_workspace_name"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    params_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

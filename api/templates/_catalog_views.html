@@ -1,0 +1,27 @@
+{# Сохранённые виды: набор фильтров под именем. Общие для workspace —
+   «что тестировать» это про команду, а не про одного человека. #}
+<div class="cat-views" id="cat-views">
+  {% for view in views %}
+    <span class="view-chip{{ ' active' if saved_name == view.name else '' }}">
+      <a href="/?{{ view.params_json|urlencode }}">{{ view.name }}</a>
+      <button class="view-drop" title="Удалить вид"
+              hx-delete="/api/links/views/{{ view.id }}"
+              hx-target="#cat-views" hx-swap="outerHTML"
+              hx-confirm="Удалить вид «{{ view.name }}»?">×</button>
+    </span>
+  {% endfor %}
+
+  <details class="tag-select">
+    <summary>Сохранить вид</summary>
+    <div class="tag-select-menu tag-select-menu-left" style="min-width: 260px; padding: 12px;">
+      <form hx-post="/api/links/views?{{ filters|urlencode }}"
+            hx-target="#cat-views" hx-swap="outerHTML"
+            style="display: flex; flex-direction: column; gap: 8px;">
+        <input class="input-field" type="text" name="name" required maxlength="100"
+               placeholder="Например: что тестировать">
+        <button type="submit" class="btn btn-primary">Сохранить</button>
+      </form>
+      <p class="card-meta" style="margin: 8px 0 0;">Сохранятся текущие фильтры и режим.</p>
+    </div>
+  </details>
+</div>

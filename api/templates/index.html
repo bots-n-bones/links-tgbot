@@ -1,79 +1,247 @@
 {% extends "base.html" %}
+{% block title %}Каталог — COLLECT{% endblock %}
+{# Пустой класс — раскладка с сайдбаром (по умолчанию в base стоит no-side). #}
+{% block layout_class %}{% endblock %}
+
+{% macro chev() %}
+<svg class="chev" width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6.5 8 10.5l4-4"></path></svg>
+{% endmacro %}
+
+{# Ссылка, сохраняющая остальные фильтры: менять один фильтр не должно
+   сбрасывать все прочие — это главная причина, по которой фильтрами
+   перестают пользоваться. #}
+{% macro filter_url(key, value) %}
+{%- set params = {} -%}
+{%- for k, v in filters.items() -%}{%- if k != key -%}{%- set _ = params.update({k: v}) -%}{%- endif -%}{%- endfor -%}
+{%- if value -%}{%- set _ = params.update({key: value}) -%}{%- endif -%}
+/?{{ params|urlencode }}
+{%- endmacro %}
+
+{% block sidebar %}
+<aside class="filters">
+  {% set has_filters = tag or area or chat or sender or q %}
+  {% if has_filters %}
+    <a class="reset-filters" href="/?mode={{ mode }}">Сбросить фильтры</a>
+  {% endif %}
+
+  <details class="fgroup" open>
+    <summary>Area {{ chev() }}</summary>
+    <div class="chiprow">
+      {% for name, count in areas or [] %}
+        <a class="chip{{ ' active' if area == name else '' }}" href="{{ filter_url('area', '' if area == name else name) }}">
+          {{ name }}<span class="chip-count num">{{ count }}</span>
+        </a>
+      {% else %}
+        <span class="empty-note">Пока ничему не проставлена area</span>
+      {% endfor %}
+    </div>
+  </details>
+
+  <details class="fgroup" open>
+    <summary>Теги {{ chev() }}</summary>
+    <div class="chiprow">
+      {% for name, count in all_tags or [] %}
+        <a class="chip{{ ' active' if tag == name else '' }}" href="{{ filter_url('tag', '' if tag == name else name) }}">
+          {{ name }}<span class="chip-count num">{{ count }}</span>
+        </a>
+      {% else %}
+        <span class="empty-note">Тегов пока нет</span>
+      {% endfor %}
+    </div>
+  </details>
+
+  <details class="fgroup" open>
+    <summary>Откуда {{ chev() }}</summary>
+    <div class="foptions">
+      {% for title, count in chats or [] %}
+        <a class="{{ 'active' if chat == title else '' }}" href="{{ filter_url('chat', '' if chat == title else title) }}">
+          <span>{{ title }}</span><span class="count">{{ count }}</span>
+        </a>
+      {% else %}
+        <span class="empty-note">Источники не записаны</span>
+      {% endfor %}
+    </div>
+  </details>
+
+  <details class="fgroup" open>
+    <summary>Кто принёс {{ chev() }}</summary>
+    <div class="foptions">
+      {% for name, count in senders or [] %}
+        <a class="{{ 'active' if sender == name else '' }}" href="{{ filter_url('sender', '' if sender == name else name) }}">
+          <span>{{ name }}</span><span class="count">{{ count }}</span>
+        </a>
+      {% else %}
+        <span class="empty-note">Авторы не записаны</span>
+      {% endfor %}
+    </div>
+  </details>
+
+  {% if broken_count %}
+  <details class="fgroup" open>
+    <summary>Проблемы {{ chev() }}</summary>
+    <div class="foptions">
+      {# Не загрузившиеся ссылки иначе не найти: они выглядят обычными
+         записями без описания и тегов, и сломанный источник молча оседает
+         в каталоге. #}
+      <a class="{{ 'active' if broken else '' }}" href="{{ filter_url('broken', '' if broken else '1') }}">
+        <span>Не загрузилось</span><span class="count">{{ broken_count }}</span>
+      </a>
+    </div>
+  </details>
+  {% endif %}
+
+  <details class="fgroup" open>
+    <summary>Виды {{ chev() }}</summary>
+    {% include "_catalog_views.html" %}
+  </details>
+</aside>
+{% endblock %}
+
 {% block content %}
-<div class="eyebrow">Links</div>
-<h1>Links</h1>
-<p class="card-meta" style="margin-bottom: 20px;">Every link the team has captured, in one searchable table.</p>
+<div class="eyebrow">Catalog</div>
+<h1>Каталог</h1>
+<p class="cat-lede">
+  Всё, что команда приносила в чат — вместе с тем, что человек написал, кидая это.
+  {% if last_capture_at %}
+    <span class="cat-lede-meta num">Последняя ссылка {{ last_capture_at.strftime('%d.%m.%Y %H:%M') }}.</span>
+  {% else %}
+    <span class="cat-lede-meta">Пока ничего не приезжало.</span>
+  {% endif %}
+</p>
+
+<div class="toolbar">
+  {% include "_catalog_modes.html" %}
+
+  <form class="filters-inline" hx-get="/partials/links" hx-target="#links-list" hx-swap="outerHTML" hx-trigger="change, search">
+    <input type="hidden" name="mode" value="{{ mode }}">
+    {% for key in ("tag", "area", "chat", "sender") %}
+      {% if filters.get(key) %}<input type="hidden" name="{{ key }}" value="{{ filters[key] }}">{% endif %}
+    {% endfor %}
+    <input class="input-field" type="search" name="q" value="{{ q or '' }}" placeholder="Поиск по каталогу…"
+           style="width: 200px;" aria-label="Поиск по каталогу">
+    <select name="sort" aria-label="Сортировка">
+      <option value="date" {% if effective_sort == "date" %}selected{% endif %}>По дате</option>
+      <option value="priority" {% if effective_sort == "priority" %}selected{% endif %}>По приоритету</option>
+      <option value="usefulness" {% if effective_sort == "usefulness" %}selected{% endif %}>По оценке</option>
+      <option value="count" {% if effective_sort == "count" %}selected{% endif %}>По повторам</option>
+      <option value="clicks" {% if effective_sort == "clicks" %}selected{% endif %}>По открытиям</option>
+    </select>
+  </form>
+
+  <details class="tag-select" style="margin-left: auto;">
+    <summary><span class="plus-icon">+</span>Добавить</summary>
+    <div class="tag-select-menu tag-select-menu-left" style="min-width: 340px; padding: 14px;">
+      <form hx-post="/links/add" hx-target="#links-list" hx-swap="outerHTML" style="display: flex; flex-direction: column; gap: 8px;">
+        <input type="hidden" name="mode" value="{{ mode }}">
+        <input type="text" name="url" placeholder="https://…" required class="input-field">
+        <textarea name="note" rows="2" class="input-field"
+                  placeholder="Зачем это команде? (попадёт в карточку так же, как реплика из чата)"></textarea>
+        <button type="submit" class="btn btn-primary">Добавить</button>
+      </form>
+      <p id="add-link-status" class="card-meta" style="margin: 8px 0 0;"></p>
+    </div>
+  </details>
+</div>
 
 <div class="panel">
-  <div class="panel-header">
-    <span class="panel-title">Links</span>
-    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-      <form class="filters" hx-get="/partials/links" hx-target="#links-list" hx-swap="outerHTML" hx-trigger="change">
-        <details class="tag-select">
-          <summary>
-            {% if tag %}<span class="swatch" style="--tag-color: var({{ tag_color(tag) }});"></span>{% endif %}
-            {{ tag or "All tags" }}
-          </summary>
-          <div class="tag-select-menu">
-            <a class="tag-option" href="#"
-               hx-get="/partials/links?tag=&area={{ area or '' }}&sort={{ sort }}" hx-target="#links-list" hx-swap="outerHTML"
-               onclick="this.closest('details').open=false">All tags</a>
-            {% for name, count in all_tags %}
-              <a class="tag-option" href="#"
-                 hx-get="/partials/links?tag={{ name }}&area={{ area or '' }}&sort={{ sort }}" hx-target="#links-list" hx-swap="outerHTML"
-                 onclick="this.closest('details').open=false">
-                <span class="swatch" style="--tag-color: var({{ tag_color(name) }});"></span>{{ name }} ({{ count }})
-              </a>
-            {% endfor %}
-          </div>
-        </details>
-        <details class="tag-select">
-          <summary>
-            {% if area %}<span class="swatch" style="--tag-color: var({{ area_color(area) }});"></span>{% endif %}
-            {{ area or "All areas" }}
-          </summary>
-          <div class="tag-select-menu">
-            <a class="tag-option" href="#"
-               hx-get="/partials/links?tag={{ tag or '' }}&area=&sort={{ sort }}" hx-target="#links-list" hx-swap="outerHTML"
-               onclick="this.closest('details').open=false">All areas</a>
-            {% for choice in area_choices %}
-              <a class="tag-option" href="#"
-                 hx-get="/partials/links?tag={{ tag or '' }}&area={{ choice }}&sort={{ sort }}" hx-target="#links-list" hx-swap="outerHTML"
-                 onclick="this.closest('details').open=false">
-                <span class="swatch" style="--tag-color: var({{ area_color(choice) }});"></span>{{ choice }}
-              </a>
-            {% endfor %}
-          </div>
-        </details>
-        <select name="sort">
-          <option value="date" {% if sort == "date" %}selected{% endif %}>By date</option>
-          <option value="priority" {% if sort == "priority" %}selected{% endif %}>By priority</option>
-          <option value="tested" {% if sort == "tested" %}selected{% endif %}>By tested</option>
-          <option value="usefulness" {% if sort == "usefulness" %}selected{% endif %}>By usefulness</option>
-        </select>
-      </form>
-      <details class="tag-select">
-        <summary><span class="plus-icon">+</span>Add link</summary>
-        <div class="tag-select-menu tag-select-menu-left" style="min-width: 300px; padding: 14px;">
-          <form hx-post="/links/add" hx-target="#links-list" hx-swap="outerHTML" style="display: flex; flex-direction: column; gap: 8px;">
-            <input type="text" name="url" placeholder="https://…" required class="input-field">
-            <button type="submit" class="btn btn-primary">Add</button>
-          </form>
-          <p id="add-link-status" class="card-meta" style="margin: 8px 0 0;"></p>
-        </div>
-      </details>
+  {% if mode == "inbox" and mode_counts and mode_counts.get("inbox") %}
+    <p class="panel-note">
+      В Inbox лежит всё, что ещё никто не разбирал, — включая захваченное до появления этого режима.
+      Разбор ничего не меняет в записи, он только убирает её отсюда.
+    </p>
+  {% endif %}
+
+  {# Панель массовых действий: появляется, только когда что-то выбрано.
+     Постоянная панель на пустом выборе — шум, который перестают замечать.
+     hx-post висит на каждой кнопке, а не на обёртке: HTMX отправляет
+     значения элемента, вызвавшего запрос, и на обёртке им оказался бы
+     контейнер, без action. #}
+  <div class="bulk-bar" id="bulk-bar" hidden>
+    <span class="bulk-count num"><span id="bulk-n">0</span> выбрано</span>
+    <div class="bulk-actions">
+      {% if mode == "inbox" %}
+        <button class="btn btn-primary" hx-post="/api/links/bulk?{{ filters|urlencode }}"
+                hx-vals='{"action": "reviewed"}' hx-include="#bulk-form"
+                hx-target="#links-list" hx-swap="outerHTML">Разобрано</button>
+      {% else %}
+        <button class="btn" hx-post="/api/links/bulk?{{ filters|urlencode }}"
+                hx-vals='{"action": "unreviewed"}' hx-include="#bulk-form"
+                hx-target="#links-list" hx-swap="outerHTML">Вернуть в Inbox</button>
+      {% endif %}
+      <button class="btn" hx-post="/api/links/bulk?{{ filters|urlencode }}"
+              hx-vals='{"action": "tested"}' hx-include="#bulk-form"
+              hx-target="#links-list" hx-swap="outerHTML">Проверено</button>
+      {% if mode == "hidden" %}
+        <button class="btn" hx-post="/api/links/bulk?{{ filters|urlencode }}"
+                hx-vals='{"action": "unhide"}' hx-include="#bulk-form"
+                hx-target="#links-list" hx-swap="outerHTML">Вернуть</button>
+      {% else %}
+        <button class="btn" hx-post="/api/links/bulk?{{ filters|urlencode }}"
+                hx-vals='{"action": "hide"}' hx-include="#bulk-form"
+                hx-target="#links-list" hx-swap="outerHTML">Скрыть</button>
+      {% endif %}
+      <button class="btn" hx-post="/api/links/bulk?{{ filters|urlencode }}"
+              hx-vals='{"action": "priority", "priority": "high"}' hx-include="#bulk-form"
+              hx-target="#links-list" hx-swap="outerHTML">Приоритет high</button>
     </div>
+    <button class="btn bulk-clear" type="button" id="bulk-clear">Снять выбор</button>
   </div>
+
+  {% if mode == "inbox" and mode_counts and mode_counts.get("inbox") %}
+    {# Отдельно от выбора: Inbox стартует полным из-за того, что миграция
+       намеренно не проставляла разбор задним числом. Обнулить стопку —
+       решение команды, и принимается оно один раз. #}
+    <div class="bulk-bar bulk-bar-static">
+      <span class="bulk-count">Разбирали не всё, что накопилось раньше?</span>
+      <div class="bulk-actions">
+        <button class="btn" hx-post="/api/links/bulk?{{ filters|urlencode }}"
+                hx-vals='{"action": "reviewed", "scope": "all"}'
+                hx-target="#links-list" hx-swap="outerHTML"
+                hx-confirm="Отметить разобранным всё, что сейчас в этом фильтре?">
+          Отметить всё разобранным
+        </button>
+      </div>
+    </div>
+  {% endif %}
+
   {% include "_links_list.html" %}
 </div>
 
 <div style="display: flex; justify-content: flex-end;">
   <details class="tag-select">
-    <summary>Download all data</summary>
-    <div class="tag-select-menu">
-      <a class="tag-option" href="/export/links.csv">Download .csv</a>
-      <a class="tag-option" href="/export/links.md">Download .md</a>
+    <summary>Выгрузить данные</summary>
+    <div class="tag-select-menu tag-select-menu-left">
+      <a class="tag-option" href="/export/links.csv">Скачать .csv</a>
+      <a class="tag-option" href="/export/links.md">Скачать .md</a>
     </div>
   </details>
 </div>
+
+<script>
+  // Панель массовых действий показывается, только когда что-то выбрано.
+  // Слушаем на document, потому что список целиком заменяется HTMX и
+  // обработчик, повешенный на сам список, после первого же свопа отвалится.
+  (function () {
+    const bar = document.getElementById("bulk-bar");
+    const counter = document.getElementById("bulk-n");
+    if (!bar || !counter) return;
+
+    function picked() {
+      return document.querySelectorAll("#bulk-form input[name=ids]:checked");
+    }
+    function sync() {
+      const n = picked().length;
+      counter.textContent = n;
+      bar.hidden = n === 0;
+    }
+    document.addEventListener("change", function (event) {
+      if (event.target.matches("input[name=ids]")) sync();
+    });
+    document.addEventListener("htmx:afterSwap", sync);
+    document.getElementById("bulk-clear").addEventListener("click", function () {
+      picked().forEach(function (box) { box.checked = false; });
+      sync();
+    });
+  })();
+</script>
 {% endblock %}

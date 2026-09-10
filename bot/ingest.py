@@ -1,10 +1,45 @@
 """Общая идемпотентная логика приёма сообщений (F-01/F-02) для group.py и private.py."""
 
+from aiogram.types import Message, MessageOriginChannel, MessageOriginChat, MessageOriginUser
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import RawMessage, SourceType
+
+
+def forwarded_from_name(message: Message) -> str | None:
+    """Откуда переслано — канал, чат или человек.
+
+    Скрытый отправитель (MessageOriginHiddenUser) даёт только строку имени,
+    поэтому обрабатывается общей веткой ниже."""
+    origin = message.forward_origin
+    if origin is None:
+        return None
+    if isinstance(origin, MessageOriginChannel):
+        return origin.chat.title or origin.chat.username
+    if isinstance(origin, MessageOriginChat):
+        return origin.sender_chat.title
+    if isinstance(origin, MessageOriginUser):
+        return origin.sender_user.full_name
+    return getattr(origin, "sender_user_name", None)
+
+
+def build_source_context(message: Message) -> dict:
+    """Кто, откуда и в ответ на что прислал ссылку.
+
+    Эти поля есть у Telegram-сообщения и нужны карточке каталога, чтобы
+    показать реплику с автором. Раньше они терялись: raw_messages их не
+    хранил, и LinkSource.sender_name/chat_title у ссылок всегда были NULL.
+    """
+    reply = message.reply_to_message
+    return {
+        "sender_name": message.from_user.full_name if message.from_user else None,
+        # В личке у чата нет названия — там автор и есть весь контекст.
+        "chat_title": message.chat.title,
+        "reply_to_text": (reply.text or reply.caption) if reply else None,
+        "forwarded_from": forwarded_from_name(message),
+    }
 
 
 def entities_to_json(entities: list | None) -> list[dict] | None:
@@ -31,6 +66,10 @@ async def ingest_message(
     text: str | None,
     entities_json: list[dict] | None,
     source_type: SourceType,
+    sender_name: str | None = None,
+    chat_title: str | None = None,
+    reply_to_text: str | None = None,
+    forwarded_from: str | None = None,
 ) -> tuple[RawMessage, bool]:
     """Идемпотентно сохраняет сообщение в raw_messages по
     (workspace_id, chat_id, message_id) (F-02).
@@ -45,6 +84,10 @@ async def ingest_message(
             message_id=message_id,
             sender_id=sender_id,
             text=text,
+            sender_name=sender_name,
+            chat_title=chat_title,
+            reply_to_text=reply_to_text,
+            forwarded_from=forwarded_from,
             entities_json=entities_json,
             source_type=source_type,
             processed=False,

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}@{{ job.channel_username }} — {{ job.posts_count }} posts — Nova-260{% endblock %}
+{% block title %}@{{ job.channel_username }} — {{ job.posts_count }} posts — COLLECT{% endblock %}
 {% block content %}
 <div class="eyebrow">Channels</div>
 <h1>@{{ job.channel_username }}</h1>
@@ -18,7 +18,7 @@
 <div class="panel">
   <div class="panel-header">
     <span class="panel-title">Posts</span>
-    <form class="filters" method="get" action="/channels/parse/{{ job.id }}/results">
+    <form class="filters-inline" method="get" action="/channels/parse/{{ job.id }}/results">
       <select name="sort" onchange="this.form.submit()">
         <option value="date" {% if sort == "date" %}selected{% endif %}>By date</option>
         <option value="views" {% if sort == "views" %}selected{% endif %}>By views</option>

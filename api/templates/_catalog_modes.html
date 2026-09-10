@@ -1,0 +1,10 @@
+{% set MODE_LABELS = {"inbox": "Inbox", "all": "Всё", "tested": "Проверено", "popular": "Популярное", "hidden": "Скрытое"} %}
+<div class="cat-modes" id="cat-modes"{% if oob %} hx-swap-oob="true"{% endif %}>
+  {% for m in modes %}
+    <a class="cat-mode{{ ' active' if mode == m else '' }}"
+       href="/?mode={{ m }}{% if tag %}&tag={{ tag }}{% endif %}{% if area %}&area={{ area }}{% endif %}{% if chat %}&chat={{ chat }}{% endif %}{% if sender %}&sender={{ sender }}{% endif %}{% if q %}&q={{ q }}{% endif %}">
+      {{ MODE_LABELS[m] }}
+      {% if mode_counts and mode_counts.get(m) %}<span class="cat-mode-count num">{{ mode_counts[m] }}</span>{% endif %}
+    </a>
+  {% endfor %}
+</div>

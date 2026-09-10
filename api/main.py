@@ -12,18 +12,30 @@ from sqlalchemy import func, select, text
 from starlette.middleware.sessions import SessionMiddleware
 
 from api.changelog import CHANGELOG, CURRENT_VERSION
+from api.deps import get_current_user, get_current_workspace_id
 from api.export import links_to_csv, links_to_markdown, posts_to_csv, posts_to_markdown
 from api.export_channels import channel_posts_to_csv, channel_posts_to_markdown
-from api.deps import get_current_user, get_current_workspace_id
 from api.routes import account as account_routes
 from api.routes import ask, auth, collections, links, research
 from api.routes import channels as channels_routes
 from api.routes import posts as posts_routes
 from api.routes import workspace as workspace_routes
 from api.routes.links import (
+    CATALOG_MODES,
+    DEFAULT_MODE,
+    MODE_DEFAULT_SORT,
+    catalog_mode_counts,
+    count_broken,
     count_digest_history,
     get_link_detail,
+    get_report_link_ids,
+    get_user_names,
+    last_capture_at,
+    list_all_areas,
+    list_all_chats,
+    list_all_senders,
     list_all_tags,
+    list_catalog_views,
     list_digest_history_combined,
     query_links,
 )
@@ -57,7 +69,7 @@ from worker.tasks import add_research_links, generate_research_report, run_chann
 
 MANUAL_ADD_CHAT_ID = 0  # синтетический chat_id для ссылок, добавленных вручную с дашборда
 
-app = FastAPI(title="Nova-260")
+app = FastAPI(title="COLLECT")
 app.mount("/static", StaticFiles(directory="api/static"), name="static")
 app.add_middleware(SessionMiddleware, secret_key=get_settings().session_secret_key)
 
@@ -93,12 +105,75 @@ async def health() -> dict:
     return {"status": "ok"}
 
 
+def _catalog_context(
+    *,
+    result,
+    mode: str,
+    tag: str | None,
+    area: str | None,
+    chat: str | None,
+    sender: str | None,
+    q: str | None,
+    sort: str | None,
+    posts_by_link: dict,
+    broken: bool = False,
+    report_link_ids: set | None = None,
+    user_names: dict | None = None,
+    extra: dict | None = None,
+) -> dict:
+    filters = {"mode": mode}
+    for key, value in (
+        ("tag", tag),
+        ("area", area),
+        ("chat", chat),
+        ("sender", sender),
+        ("q", q),
+        ("broken", "1" if broken else None),
+        ("sort", sort),
+    ):
+        if value:
+            filters[key] = value
+
+    context = {
+        "links": result.items,
+        "total": result.total,
+        "page": result.page,
+        "page_size": result.page_size,
+        "mode": mode,
+        "modes": CATALOG_MODES,
+        "tag": tag,
+        "area": area,
+        "chat": chat,
+        "sender": sender,
+        "q": q,
+        "broken": broken,
+        "report_link_ids": report_link_ids or set(),
+        "user_names": user_names or {},
+        "sort": sort,
+        # Режим задаёт сортировку по умолчанию, и выпадающий список должен
+        # показывать ту, по которой список реально отсортирован. Иначе при
+        # ?mode=popular он говорит «по дате», а порядок — по открытиям.
+        # В filters при этом кладётся только явно выбранная сортировка,
+        # чтобы смена режима не таскала за собой чужую.
+        "effective_sort": sort or MODE_DEFAULT_SORT.get(mode, "date"),
+        "filters": filters,
+        "posts_by_link": posts_by_link,
+    }
+    context.update(extra or {})
+    return context
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index(
     request: Request,
+    mode: str = DEFAULT_MODE,
     tag: str | None = None,
     area: str | None = None,
-    sort: str = "date",
+    chat: str | None = None,
+    sender: str | None = None,
+    q: str | None = None,
+    broken: bool = False,
+    sort: str | None = None,
     page: int = 1,
     workspace_id: int | None = Depends(get_current_workspace_id),
 ):
@@ -110,36 +185,76 @@ async def index(
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         result = await query_links(
-            session, workspace_id=workspace_id, tag=tag, area=area, sort=sort, page=page
+            session,
+            workspace_id=workspace_id,
+            mode=mode,
+            tag=tag,
+            area=area,
+            chat=chat,
+            sender=sender,
+            q=q,
+            broken=broken,
+            sort=sort,
+            page=page,
         )
         all_tags = await list_all_tags(session, workspace_id)
-        posts_by_link = await get_posts_by_link_ids(
-            session, workspace_id, [link.id for link in result.items]
+        mode_counts = await catalog_mode_counts(session, workspace_id)
+        chats = await list_all_chats(session, workspace_id)
+        senders = await list_all_senders(session, workspace_id)
+        views = await list_catalog_views(session, workspace_id)
+        areas = await list_all_areas(session, workspace_id)
+        broken_count = await count_broken(session, workspace_id)
+        captured_at = await last_capture_at(session, workspace_id)
+        page_ids = [link.id for link in result.items]
+        posts_by_link = await get_posts_by_link_ids(session, workspace_id, page_ids)
+        report_link_ids = await get_report_link_ids(session, workspace_id, page_ids)
+        user_names = await get_user_names(
+            session,
+            [link.added_by_user_id for link in result.items]
+            + [link.reviewed_by_user_id for link in result.items],
         )
 
     return templates.TemplateResponse(
         request,
         "index.html",
-        {
-            "links": result.items,
-            "total": result.total,
-            "page": result.page,
-            "page_size": result.page_size,
-            "tag": tag,
-            "area": area,
-            "sort": sort,
-            "all_tags": all_tags,
-            "posts_by_link": posts_by_link,
-        },
+        _catalog_context(
+            result=result,
+            mode=mode,
+            tag=tag,
+            area=area,
+            chat=chat,
+            sender=sender,
+            q=q,
+            sort=sort,
+            posts_by_link=posts_by_link,
+            broken=broken,
+            report_link_ids=report_link_ids,
+            user_names=user_names,
+            extra={
+                "all_tags": all_tags,
+                "mode_counts": mode_counts,
+                "chats": chats,
+                "senders": senders,
+                "views": views,
+                "areas": areas,
+                "last_capture_at": captured_at,
+                "broken_count": broken_count,
+            },
+        ),
     )
 
 
 @app.get("/partials/links", response_class=HTMLResponse)
 async def partial_links(
     request: Request,
+    mode: str = DEFAULT_MODE,
     tag: str | None = None,
     area: str | None = None,
-    sort: str = "date",
+    chat: str | None = None,
+    sender: str | None = None,
+    q: str | None = None,
+    broken: bool = False,
+    sort: str | None = None,
     page: int = 1,
     workspace_id: int | None = Depends(get_current_workspace_id),
 ):
@@ -151,25 +266,44 @@ async def partial_links(
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         result = await query_links(
-            session, workspace_id=workspace_id, tag=tag, area=area, sort=sort, page=page
+            session,
+            workspace_id=workspace_id,
+            mode=mode,
+            tag=tag,
+            area=area,
+            chat=chat,
+            sender=sender,
+            q=q,
+            broken=broken,
+            sort=sort,
+            page=page,
         )
-        posts_by_link = await get_posts_by_link_ids(
-            session, workspace_id, [link.id for link in result.items]
+        page_ids = [link.id for link in result.items]
+        posts_by_link = await get_posts_by_link_ids(session, workspace_id, page_ids)
+        report_link_ids = await get_report_link_ids(session, workspace_id, page_ids)
+        user_names = await get_user_names(
+            session,
+            [link.added_by_user_id for link in result.items]
+            + [link.reviewed_by_user_id for link in result.items],
         )
 
     return templates.TemplateResponse(
         request,
         "_links_list.html",
-        {
-            "links": result.items,
-            "posts_by_link": posts_by_link,
-            "total": result.total,
-            "page": result.page,
-            "page_size": result.page_size,
-            "tag": tag,
-            "area": area,
-            "sort": sort,
-        },
+        _catalog_context(
+            result=result,
+            mode=mode,
+            tag=tag,
+            area=area,
+            chat=chat,
+            sender=sender,
+            q=q,
+            sort=sort,
+            posts_by_link=posts_by_link,
+            broken=broken,
+            report_link_ids=report_link_ids,
+            user_names=user_names,
+        ),
     )
 
 
@@ -177,11 +311,19 @@ async def partial_links(
 async def add_link_manual(
     request: Request,
     url: str = Form(...),
+    note: str = Form(""),
+    mode: str = Form(DEFAULT_MODE),
     workspace_id: int | None = Depends(get_current_workspace_id),
 ):
     """Ручное добавление ссылки с дашборда — идёт через тот же dedup/LLM
     пайплайн, что и ссылки из бота (bot/ingest.py), просто с синтетическим
-    источником вместо реального Telegram-сообщения."""
+    источником вместо реального Telegram-сообщения.
+
+    Заметка кладётся в текст сообщения рядом с URL — туда же, где живёт
+    реплика из чата. Так в каталоге не появляется два разных «почему»: и
+    заметка, и реплика читаются одним полем. Побочно она достаётся и LLM
+    (worker/tasks.py передаёт message_text в describe_link), то есть
+    объяснение своими словами улучшает автоописание и теги."""
     gate = _require_workspace(workspace_id)
     if isinstance(gate, RedirectResponse):
         return gate
@@ -189,8 +331,9 @@ async def add_link_manual(
     current_user = await get_current_user(request)
 
     url = url.strip()
+    note = note.strip()
     if not url:
-        status_text = "Enter a URL."
+        status_text = "Введите ссылку."
     else:
         sessionmaker = get_sessionmaker()
         async with sessionmaker() as session:
@@ -200,19 +343,23 @@ async def add_link_manual(
                 chat_id=MANUAL_ADD_CHAT_ID,
                 message_id=int(time.time() * 1000),
                 sender_id=current_user.telegram_id if current_user else None,
-                text=url,
+                text=f"{url}\n{note}" if note else url,
                 entities_json=None,
                 source_type=SourceType.manual,
+                sender_name=(
+                    (current_user.full_name or current_user.username) if current_user else None
+                ),
+                chat_title="Добавлено вручную",
             )
         if is_new:
             enqueue_processing(raw_message.id)
-            status_text = "Added — will appear in the table once processed (a few seconds)."
+            status_text = "Добавлено — появится в каталоге через несколько секунд."
         else:
-            status_text = "Already queued."
+            status_text = "Уже в очереди."
 
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
-        result = await query_links(session, workspace_id=workspace_id, sort="date", page=1)
+        result = await query_links(session, workspace_id=workspace_id, mode=mode, page=1)
         posts_by_link = await get_posts_by_link_ids(
             session, workspace_id, [link.id for link in result.items]
         )
@@ -220,16 +367,17 @@ async def add_link_manual(
     list_response = templates.TemplateResponse(
         request,
         "_links_list.html",
-        {
-            "links": result.items,
-            "posts_by_link": posts_by_link,
-            "total": result.total,
-            "page": result.page,
-            "page_size": result.page_size,
-            "tag": None,
-            "area": None,
-            "sort": "date",
-        },
+        _catalog_context(
+            result=result,
+            mode=mode,
+            tag=None,
+            area=None,
+            chat=None,
+            sender=None,
+            q=None,
+            sort=None,
+            posts_by_link=posts_by_link,
+        ),
     )
     status_html = (
         f'<p id="add-link-status" hx-swap-oob="true" class="card-meta">'
@@ -1024,7 +1172,9 @@ async def account_page(request: Request):
             )
             or 0,
             "watchlist_size": await session.scalar(
-                select(func.count()).select_from(ChannelWatch).where(ChannelWatch.user_id == user.id)
+                select(func.count())
+                .select_from(ChannelWatch)
+                .where(ChannelWatch.user_id == user.id)
             )
             or 0,
         }

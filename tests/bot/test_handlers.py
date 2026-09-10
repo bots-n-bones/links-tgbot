@@ -59,6 +59,7 @@ class FakeMessage:
     photo: list | None = None
     forward_origin: object | None = None
     sent: list[str] = field(default_factory=list)
+    markups: list = field(default_factory=list)
 
     async def answer(self, text: str, **kwargs) -> None:
         self.sent.append(text)
@@ -68,6 +69,9 @@ class FakeMessage:
 
     async def edit_text(self, text: str, **kwargs) -> None:
         self.sent.append(text)
+
+    async def edit_reply_markup(self, reply_markup=None, **kwargs) -> None:
+        self.markups.append(reply_markup)
 
 
 BOT_FAKE_USER_ID = 0  # callback.message.from_user — это бот, не нажавший кнопку человек
@@ -783,3 +787,180 @@ async def test_private_handler_without_pending_state_falls_back_to_casual_chat(d
     msg = make_private_message(58, "как дела?", sender_id=WHITELISTED_USER_ID)
     await private_module.handle_private_message(msg, state)
     assert "Фейковый ответ LLM." in msg.sent[0]
+
+
+async def test_group_handler_records_who_sent_it_and_from_where(db_session, monkeypatch):
+    """Сообщение из группы сохраняет автора, чат и реплику, на которую
+    отвечали.
+
+    Каталог показывает ссылку вместе с тем, что человек написал, и с его
+    именем. Без этих полей карточка знает текст, но не знает автора."""
+    monkeypatch.setattr(group_module, "enqueue_processing", lambda rid: None)
+
+    replied = FakeMessage(
+        chat=FakeChat(id=-100123, type="group", title="AI-новости"),
+        from_user=FakeUser(id=2, full_name="Вика"),
+        message_id=1,
+        text="кто-нибудь трогал pgvector в бою?",
+    )
+    msg = FakeMessage(
+        chat=FakeChat(id=-100123, type="group", title="AI-новости"),
+        from_user=FakeUser(id=1, full_name="Борис"),
+        message_id=2,
+        text="вот https://example.com/a — кажется, это заменит нам две тулзы",
+        reply_to_message=replied,
+    )
+    await group_module.handle_group_message(msg)
+
+    row = (await db_session.execute(select(RawMessage))).scalars().one()
+    assert row.sender_name == "Борис"
+    assert row.chat_title == "AI-новости"
+    assert row.reply_to_text == "кто-нибудь трогал pgvector в бою?"
+    assert row.forwarded_from is None
+
+
+async def test_forwarded_from_name_reads_a_channel_forward():
+    """Пересылка из канала подписывается названием канала, а не именем того,
+    кто её переслал."""
+    from datetime import UTC, datetime
+
+    from aiogram.types import Chat, MessageOriginChannel
+
+    from bot.ingest import forwarded_from_name
+
+    msg = FakeMessage(
+        chat=FakeChat(id=-100123, type="group", title="Общий чат"),
+        from_user=FakeUser(id=1, full_name="Борис"),
+        message_id=3,
+        text="https://example.com/a",
+        forward_origin=MessageOriginChannel(
+            type="channel",
+            date=datetime.now(UTC),
+            chat=Chat(id=-1009, type="channel", title="Техно-лента", username="technolenta"),
+            message_id=7,
+        ),
+    )
+    assert forwarded_from_name(msg) == "Техно-лента"
+
+
+# --- разметка ссылки кнопками под ответом бота ---
+
+
+async def _make_link_for_buttons(db_session, workspace_id: int, **kwargs):
+    import hashlib
+
+    link = Link(
+        workspace_id=workspace_id,
+        url="https://example.com/a",
+        normalized_url="example.com/a",
+        url_hash=hashlib.sha256(b"buttons").hexdigest(),
+        title="Материал",
+        status=LinkStatus.done,
+        **kwargs,
+    )
+    db_session.add(link)
+    await db_session.commit()
+    await db_session.refresh(link)
+    return link
+
+
+async def _press(
+    db_session, link_id: int, action: str, value: str = "", sender_id: int | None = None
+):
+    import bot.handlers.link_actions as link_actions_module
+    from bot.keyboards import link_cb
+
+    message = FakeMessage(
+        chat=FakeChat(id=-100123, type="group", title="Общий чат"),
+        from_user=FakeUser(id=BOT_FAKE_USER_ID),
+        message_id=1,
+    )
+    callback = FakeCallbackQuery(
+        data=link_cb(action, link_id, value),
+        message=message,
+        from_user=FakeUser(id=sender_id if sender_id is not None else WHITELISTED_USER_ID),
+    )
+    await link_actions_module.handle_link_action(callback)
+    return callback
+
+
+async def test_button_marks_link_reviewed(db_session, _default_workspace):
+    link = await _make_link_for_buttons(db_session, _default_workspace.id)
+
+    await _press(db_session, link.id, "reviewed")
+
+    await db_session.refresh(link)
+    assert link.reviewed_at is not None
+
+
+async def test_tested_button_is_a_toggle(db_session, _default_workspace):
+    """Промахнуться кнопкой в чате легко, поэтому отметка снимается тем же
+    нажатием, а не требует похода в дашборд."""
+    link = await _make_link_for_buttons(db_session, _default_workspace.id)
+
+    await _press(db_session, link.id, "tested")
+    await db_session.refresh(link)
+    assert link.is_tested is True
+
+    await _press(db_session, link.id, "tested")
+    await db_session.refresh(link)
+    assert link.is_tested is False
+
+
+async def test_priority_button_toggles_back_to_normal(db_session, _default_workspace):
+    from db.models import ManualPriority
+
+    link = await _make_link_for_buttons(db_session, _default_workspace.id)
+
+    await _press(db_session, link.id, "prio", "high")
+    await db_session.refresh(link)
+    assert link.manual_priority == ManualPriority.high
+
+    await _press(db_session, link.id, "prio", "high")
+    await db_session.refresh(link)
+    assert link.manual_priority == ManualPriority.normal
+
+
+async def test_area_button_sets_area_and_returns_the_main_keyboard(db_session, _default_workspace):
+    link = await _make_link_for_buttons(db_session, _default_workspace.id)
+
+    callback = await _press(db_session, link.id, "area", "design")
+
+    await db_session.refresh(link)
+    assert link.area == "design"
+    # После выбора клавиатура возвращается к основной, а не остаётся на
+    # экране выбора area.
+    assert callback.message.markups
+
+
+async def test_area_button_rejects_a_value_outside_the_taxonomy(db_session, _default_workspace):
+    link = await _make_link_for_buttons(db_session, _default_workspace.id)
+
+    await _press(db_session, link.id, "area", "не-существующая")
+
+    await db_session.refresh(link)
+    assert link.area is None
+
+
+async def test_buttons_cannot_touch_another_workspace(db_session, _default_workspace):
+    """Callback data приходит от клиента: без проверки workspace по номеру
+    можно было бы разметить чужую запись."""
+    other = Workspace(name="Чужая команда")
+    db_session.add(other)
+    await db_session.commit()
+    await db_session.refresh(other)
+    foreign = await _make_link_for_buttons(db_session, other.id)
+
+    callback = await _press(db_session, foreign.id, "reviewed")
+
+    await db_session.refresh(foreign)
+    assert foreign.reviewed_at is None
+    assert callback.answered  # пользователю сказали, что ссылка не найдена
+
+
+async def test_link_callbacks_do_not_swallow_menu_callbacks():
+    """Роутер разметки не должен перехватывать callback'и главного меню."""
+    from bot.keyboards import CB_ASK, parse_link_cb
+
+    assert parse_link_cb(CB_ASK) is None
+    assert parse_link_cb("link:reviewed:12") == ("reviewed", 12, "")

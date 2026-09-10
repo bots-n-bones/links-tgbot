@@ -483,3 +483,112 @@ async def test_new_link_unattributed_when_sender_has_no_account(
 
     link = (await db_session.execute(select(Link))).scalars().one()
     assert link.added_by_user_id is None
+
+
+async def test_attribution_travels_from_message_to_link_source(
+    db_session, workspace_id, monkeypatch
+):
+    """Кто прислал, откуда и в ответ на что — доезжает до LinkSource.
+
+    Поля в LinkSource существовали с самого начала, но пайплайн ссылок их
+    не заполнял, и у каждой ссылки автор был NULL. Карточка каталога
+    показывает реплику с автором, поэтому это регрессия, которую надо
+    ловить."""
+    _patch_clients(monkeypatch)
+    monkeypatch.setattr(tasks_module, "fetch_metadata", _fake_fetch_ok)
+
+    rm = RawMessage(
+        workspace_id=workspace_id,
+        chat_id=42,
+        message_id=1,
+        sender_id=777,
+        text="https://example.com/a кажется, это заменит нам две тулзы",
+        sender_name="Борис",
+        chat_title="AI-новости",
+        reply_to_text="кто-нибудь трогал pgvector в бою?",
+        forwarded_from="Техно-лента",
+        source_type=SourceType.group,
+    )
+    db_session.add(rm)
+    await db_session.commit()
+    await db_session.refresh(rm)
+
+    await tasks_module._process_raw_message_async(rm.id)
+
+    source = (await db_session.execute(select(LinkSource))).scalars().one()
+    assert source.sender_name == "Борис"
+    assert source.chat_title == "AI-новости"
+    assert source.reply_to_text == "кто-нибудь трогал pgvector в бою?"
+    assert source.forwarded_from == "Техно-лента"
+    assert "заменит нам две тулзы" in source.message_text
+
+
+async def test_attribution_recorded_for_a_repeat_of_a_known_link(
+    db_session, workspace_id, monkeypatch
+):
+    """Повтор уже известной ссылки идёт другой веткой (без fetch и LLM) —
+    авторство должно записываться и там, иначе второй человек, принёсший
+    ту же ссылку, в карточке безымянный."""
+    _patch_clients(monkeypatch)
+    monkeypatch.setattr(tasks_module, "fetch_metadata", _fake_fetch_ok)
+
+    first = await _add_raw_message(
+        db_session, workspace_id, chat_id=1, message_id=1, text="https://example.com/a"
+    )
+    await tasks_module._process_raw_message_async(first.id)
+
+    second = RawMessage(
+        workspace_id=workspace_id,
+        chat_id=2,
+        message_id=2,
+        sender_id=888,
+        text="https://example.com/a держите, вчера обсуждали",
+        sender_name="Вика",
+        chat_title="Общий чат",
+        source_type=SourceType.group,
+    )
+    db_session.add(second)
+    await db_session.commit()
+    await db_session.refresh(second)
+    await tasks_module._process_raw_message_async(second.id)
+
+    sources = (await db_session.execute(select(LinkSource).order_by(LinkSource.id))).scalars().all()
+    assert len(sources) == 2
+    assert sources[1].sender_name == "Вика"
+    assert sources[1].chat_title == "Общий чат"
+
+
+async def test_reply_info_carries_link_id_for_the_chat_buttons(
+    db_session, workspace_id, monkeypatch
+):
+    """Кнопки разметки под ответом бота адресуют ссылку по id.
+
+    Без него клавиатура не строится, и разметить прямо в чате нельзя —
+    ответ молча деградирует до простого текста, что незаметно."""
+    _patch_clients(monkeypatch)
+    monkeypatch.setattr(tasks_module, "fetch_metadata", _fake_fetch_ok)
+
+    new = await _add_raw_message(
+        db_session, workspace_id, chat_id=1, message_id=1, text="https://example.com/a"
+    )
+    await tasks_module._process_raw_message_async(new.id)
+    created = (await db_session.execute(select(Link))).scalars().one()
+
+    # Повтор той же ссылки идёт другой веткой — id должен быть и там.
+    repeat = await _add_raw_message(
+        db_session, workspace_id, chat_id=2, message_id=2, text="https://example.com/a"
+    )
+    await tasks_module._process_raw_message_async(repeat.id)
+
+    from bot.keyboards import link_actions_keyboard, parse_link_cb
+
+    keyboard = link_actions_keyboard(created.id, "https://collect.example")
+    callbacks = [
+        parse_link_cb(button.callback_data)
+        for row in keyboard.inline_keyboard
+        for button in row
+        if button.callback_data
+    ]
+    assert all(parsed is not None and parsed[1] == created.id for parsed in callbacks)
+    # Последний ряд — ссылка на дашборд, у неё url вместо callback_data.
+    assert keyboard.inline_keyboard[-1][0].url.endswith(f"/links/{created.id}")

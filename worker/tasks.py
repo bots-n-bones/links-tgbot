@@ -14,6 +14,7 @@ from sqlalchemy import func, select
 
 from bot.extractors import extract_urls
 from bot.ingest import enqueue_processing, ingest_message
+from bot.keyboards import link_actions_keyboard
 from db.models import (
     ChannelParsedPost,
     ChannelParseJob,
@@ -31,8 +32,8 @@ from db.models import (
     TagSynonym,
 )
 from db.session import get_engine, get_sessionmaker
-from shared.config import get_settings
 from shared.attribution import resolve_user_id_by_telegram
+from shared.config import get_settings
 from shared.redact import redact_text
 from shared.tag_normalizer import normalize_tags
 from shared.telegram_throttle import send_message_throttled
@@ -139,6 +140,10 @@ class LinkReplyInfo:
     description: str | None
     source_count: int
     unique_senders: int
+    # Нужен для кнопок под ответом бота: разметить можно прямо в чате, не
+    # переходя в дашборд. None означает, что кнопок не будет — ответ всё
+    # равно осмысленный.
+    link_id: int | None = None
 
 
 def _entities_from_json(entities_json: list[dict] | None) -> list[SimpleNamespace]:
@@ -184,7 +189,11 @@ async def _process_one_url(
                 chat_id=raw_message.chat_id,
                 message_id=raw_message.message_id,
                 sender_id=raw_message.sender_id or 0,
+                sender_name=raw_message.sender_name,
+                chat_title=raw_message.chat_title,
                 message_text=raw_message.text,
+                reply_to_text=raw_message.reply_to_text,
+                forwarded_from=raw_message.forwarded_from,
                 source_type=raw_message.source_type,
                 created_at=now,
             )
@@ -220,6 +229,7 @@ async def _process_one_url(
             description=existing.description,
             source_count=existing.source_count,
             unique_senders=existing.unique_senders,
+            link_id=existing.id,
         )
 
     # Новая ссылка
@@ -273,7 +283,11 @@ async def _process_one_url(
             chat_id=raw_message.chat_id,
             message_id=raw_message.message_id,
             sender_id=raw_message.sender_id or 0,
+            sender_name=raw_message.sender_name,
+            chat_title=raw_message.chat_title,
             message_text=raw_message.text,
+            reply_to_text=raw_message.reply_to_text,
+            forwarded_from=raw_message.forwarded_from,
             source_type=raw_message.source_type,
             created_at=now,
         )
@@ -289,6 +303,7 @@ async def _process_one_url(
         url=url,
         is_new=True,
         tags=normalized_tags,
+        link_id=link.id,
         description=link.description,
         source_count=1,
         unique_senders=1,
@@ -316,7 +331,16 @@ async def _reply_to_source(
     try:
         for info in results:
             text = _build_reply_text(info, source_type)
-            await send_message_throttled(bot, chat_id, text)
+            await send_message_throttled(
+                bot,
+                chat_id,
+                text,
+                reply_markup=(
+                    link_actions_keyboard(info.link_id, settings.dashboard_url)
+                    if info.link_id
+                    else None
+                ),
+            )
     finally:
         await bot.session.close()
 
@@ -581,6 +605,14 @@ async def _add_research_links_async(research_report_id: int) -> list[int]:
             message_id=None,
             sender_id=0,
             text=f"Добавлено из research-отчёта #{research_report_id}",
+            # Ссылки из отчёта тоже подписываются источником — иначе в
+            # каталоге они выглядят возникшими из ниоткуда, тогда как
+            # «пришло из research-отчёта» это осмысленный ответ на вопрос,
+            # откуда это здесь.
+            sender_name=None,
+            chat_title="Research-отчёт",
+            reply_to_text=None,
+            forwarded_from=None,
             source_type=SourceType.direct,
         )
 

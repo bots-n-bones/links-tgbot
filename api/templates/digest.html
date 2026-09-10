@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Reports — Nova-260{% endblock %}
+{% block title %}Reports — COLLECT{% endblock %}
 {% block extra_head %}
 <style>
   .reports-masthead {
@@ -38,8 +38,8 @@
     gap: 16px;
     padding: 22px 20px;
     border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    background: var(--bg-elevated);
+    border-radius: var(--radius-md);
+    background: var(--panel);
     margin-bottom: 28px;
     text-decoration: none;
     color: inherit;
@@ -54,7 +54,7 @@
     text-transform: uppercase;
     letter-spacing: 0.06em;
   }
-  .latest-issue-title { font-family: var(--font-display); font-size: 20px; margin-top: 2px; }
+  .latest-issue-title { font-family: var(--font-sans); font-size: 20px; margin-top: 2px; }
   .latest-issue-meta { font-family: var(--font-mono); font-size: 11px; color: var(--text-faint); margin-top: 6px; }
 
   .archive-label {
@@ -81,7 +81,7 @@
 <div class="reports-masthead">
   <div>
     <div class="eyebrow">Reports</div>
-    <h1>Nova-260 Reports</h1>
+    <h1>COLLECT Reports</h1>
   </div>
   <div class="reports-masthead-meta">
     {{ schedule_note }}<br>
