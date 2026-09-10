@@ -1,98 +1,135 @@
 {% extends "base.html" %}
 {% block title %}Каталог — COLLECT{% endblock %}
+{# Пустой класс — раскладка с сайдбаром (по умолчанию в base стоит no-side). #}
+{% block layout_class %}{% endblock %}
+
+{% macro chev() %}
+<svg class="chev" width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6.5 8 10.5l4-4"></path></svg>
+{% endmacro %}
+
+{# Ссылка, сохраняющая остальные фильтры: менять один фильтр не должно
+   сбрасывать все прочие — это главная причина, по которой фильтрами
+   перестают пользоваться. #}
+{% macro filter_url(key, value) %}
+{%- set params = {} -%}
+{%- for k, v in filters.items() -%}{%- if k != key -%}{%- set _ = params.update({k: v}) -%}{%- endif -%}{%- endfor -%}
+{%- if value -%}{%- set _ = params.update({key: value}) -%}{%- endif -%}
+/?{{ params|urlencode }}
+{%- endmacro %}
+
+{% block sidebar %}
+<aside class="filters">
+  {% set has_filters = tag or area or chat or sender or q %}
+  {% if has_filters %}
+    <a class="reset-filters" href="/?mode={{ mode }}">Сбросить фильтры</a>
+  {% endif %}
+
+  <details class="fgroup" open>
+    <summary>Area {{ chev() }}</summary>
+    <div class="chiprow">
+      {% for name, count in areas or [] %}
+        <a class="chip{{ ' active' if area == name else '' }}" href="{{ filter_url('area', '' if area == name else name) }}">
+          {{ name }}<span class="chip-count num">{{ count }}</span>
+        </a>
+      {% else %}
+        <span class="empty-note">Пока ничему не проставлена area</span>
+      {% endfor %}
+    </div>
+  </details>
+
+  <details class="fgroup" open>
+    <summary>Теги {{ chev() }}</summary>
+    <div class="chiprow">
+      {% for name, count in all_tags or [] %}
+        <a class="chip{{ ' active' if tag == name else '' }}" href="{{ filter_url('tag', '' if tag == name else name) }}">
+          {{ name }}<span class="chip-count num">{{ count }}</span>
+        </a>
+      {% else %}
+        <span class="empty-note">Тегов пока нет</span>
+      {% endfor %}
+    </div>
+  </details>
+
+  <details class="fgroup" open>
+    <summary>Откуда {{ chev() }}</summary>
+    <div class="foptions">
+      {% for title, count in chats or [] %}
+        <a class="{{ 'active' if chat == title else '' }}" href="{{ filter_url('chat', '' if chat == title else title) }}">
+          <span>{{ title }}</span><span class="count">{{ count }}</span>
+        </a>
+      {% else %}
+        <span class="empty-note">Источники не записаны</span>
+      {% endfor %}
+    </div>
+  </details>
+
+  <details class="fgroup" open>
+    <summary>Кто принёс {{ chev() }}</summary>
+    <div class="foptions">
+      {% for name, count in senders or [] %}
+        <a class="{{ 'active' if sender == name else '' }}" href="{{ filter_url('sender', '' if sender == name else name) }}">
+          <span>{{ name }}</span><span class="count">{{ count }}</span>
+        </a>
+      {% else %}
+        <span class="empty-note">Авторы не записаны</span>
+      {% endfor %}
+    </div>
+  </details>
+
+  <details class="fgroup" open>
+    <summary>Виды {{ chev() }}</summary>
+    {% include "_catalog_views.html" %}
+  </details>
+</aside>
+{% endblock %}
+
 {% block content %}
 <div class="eyebrow">Catalog</div>
 <h1>Каталог</h1>
-<p class="cat-desc" style="margin-bottom: 20px; max-width: 70ch;">
+<p class="cat-lede">
   Всё, что команда приносила в чат — вместе с тем, что человек написал, кидая это.
+  {% if last_capture_at %}
+    <span class="cat-lede-meta num">Последняя ссылка {{ last_capture_at.strftime('%d.%m.%Y %H:%M') }}.</span>
+  {% else %}
+    <span class="cat-lede-meta">Пока ничего не приезжало.</span>
+  {% endif %}
 </p>
 
-<div class="panel">
-  <div class="panel-header">
-    {% include "_catalog_modes.html" %}
+<div class="toolbar">
+  {% include "_catalog_modes.html" %}
 
-    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-      <form class="filters" hx-get="/partials/links" hx-target="#links-list" hx-swap="outerHTML" hx-trigger="change, search">
+  <form class="filters-inline" hx-get="/partials/links" hx-target="#links-list" hx-swap="outerHTML" hx-trigger="change, search">
+    <input type="hidden" name="mode" value="{{ mode }}">
+    {% for key in ("tag", "area", "chat", "sender") %}
+      {% if filters.get(key) %}<input type="hidden" name="{{ key }}" value="{{ filters[key] }}">{% endif %}
+    {% endfor %}
+    <input class="input-field" type="search" name="q" value="{{ q or '' }}" placeholder="Поиск по каталогу…"
+           style="width: 200px;" aria-label="Поиск по каталогу">
+    <select name="sort" aria-label="Сортировка">
+      <option value="date" {% if effective_sort == "date" %}selected{% endif %}>По дате</option>
+      <option value="priority" {% if effective_sort == "priority" %}selected{% endif %}>По приоритету</option>
+      <option value="usefulness" {% if effective_sort == "usefulness" %}selected{% endif %}>По оценке</option>
+      <option value="count" {% if effective_sort == "count" %}selected{% endif %}>По повторам</option>
+      <option value="clicks" {% if effective_sort == "clicks" %}selected{% endif %}>По открытиям</option>
+    </select>
+  </form>
+
+  <details class="tag-select" style="margin-left: auto;">
+    <summary><span class="plus-icon">+</span>Добавить</summary>
+    <div class="tag-select-menu tag-select-menu-left" style="min-width: 340px; padding: 14px;">
+      <form hx-post="/links/add" hx-target="#links-list" hx-swap="outerHTML" style="display: flex; flex-direction: column; gap: 8px;">
         <input type="hidden" name="mode" value="{{ mode }}">
-
-        <input class="input-field" type="search" name="q" value="{{ q or '' }}" placeholder="Поиск…"
-               style="width: 180px;" aria-label="Поиск по каталогу">
-
-        <details class="tag-select">
-          <summary>
-            {% if tag %}<span class="swatch" style="--tag-color: var({{ tag_color(tag) }});"></span>{% endif %}
-            {{ tag or "Все теги" }}
-          </summary>
-          <div class="tag-select-menu">
-            <a class="tag-option" href="/?mode={{ mode }}">Все теги</a>
-            {% for name, count in all_tags %}
-              <a class="tag-option" href="/?mode={{ mode }}&tag={{ name }}{% if area %}&area={{ area }}{% endif %}">
-                <span class="swatch" style="--tag-color: var({{ tag_color(name) }});"></span>{{ name }} <span class="num">({{ count }})</span>
-              </a>
-            {% endfor %}
-          </div>
-        </details>
-
-        <details class="tag-select">
-          <summary>
-            {% if area %}<span class="swatch" style="--tag-color: var({{ area_color(area) }});"></span>{% endif %}
-            {{ area or "Все area" }}
-          </summary>
-          <div class="tag-select-menu">
-            <a class="tag-option" href="/?mode={{ mode }}{% if tag %}&tag={{ tag }}{% endif %}">Все area</a>
-            {% for choice in area_choices %}
-              <a class="tag-option" href="/?mode={{ mode }}{% if tag %}&tag={{ tag }}{% endif %}&area={{ choice }}">
-                <span class="swatch" style="--tag-color: var({{ area_color(choice) }});"></span>{{ choice }}
-              </a>
-            {% endfor %}
-          </div>
-        </details>
-
-        <details class="tag-select">
-          <summary>{{ chat or "Все чаты" }}</summary>
-          <div class="tag-select-menu">
-            <a class="tag-option" href="/?mode={{ mode }}">Все чаты</a>
-            {% for title, count in chats or [] %}
-              <a class="tag-option" href="/?mode={{ mode }}&chat={{ title }}">{{ title }} <span class="num">({{ count }})</span></a>
-            {% endfor %}
-          </div>
-        </details>
-
-        <details class="tag-select">
-          <summary>{{ sender or "Все авторы" }}</summary>
-          <div class="tag-select-menu">
-            <a class="tag-option" href="/?mode={{ mode }}">Все авторы</a>
-            {% for name, count in senders or [] %}
-              <a class="tag-option" href="/?mode={{ mode }}&sender={{ name }}">{{ name }} <span class="num">({{ count }})</span></a>
-            {% endfor %}
-          </div>
-        </details>
-
-        <select name="sort" aria-label="Сортировка">
-          <option value="date" {% if effective_sort == "date" %}selected{% endif %}>По дате</option>
-          <option value="priority" {% if effective_sort == "priority" %}selected{% endif %}>По приоритету</option>
-          <option value="usefulness" {% if effective_sort == "usefulness" %}selected{% endif %}>По оценке</option>
-          <option value="count" {% if effective_sort == "count" %}selected{% endif %}>По повторам</option>
-          <option value="clicks" {% if effective_sort == "clicks" %}selected{% endif %}>По открытиям</option>
-        </select>
+        <input type="text" name="url" placeholder="https://…" required class="input-field">
+        <textarea name="note" rows="2" class="input-field"
+                  placeholder="Зачем это команде? (попадёт в карточку так же, как реплика из чата)"></textarea>
+        <button type="submit" class="btn btn-primary">Добавить</button>
       </form>
-
-      <details class="tag-select">
-        <summary><span class="plus-icon">+</span>Добавить</summary>
-        <div class="tag-select-menu tag-select-menu-left" style="min-width: 340px; padding: 14px;">
-          <form hx-post="/links/add" hx-target="#links-list" hx-swap="outerHTML" style="display: flex; flex-direction: column; gap: 8px;">
-            <input type="hidden" name="mode" value="{{ mode }}">
-            <input type="text" name="url" placeholder="https://…" required class="input-field">
-            <textarea name="note" rows="2" class="input-field"
-                      placeholder="Зачем это команде? (попадёт в карточку так же, как реплика из чата)"></textarea>
-            <button type="submit" class="btn btn-primary">Добавить</button>
-          </form>
-          <p id="add-link-status" class="card-meta" style="margin: 8px 0 0;"></p>
-        </div>
-      </details>
+      <p id="add-link-status" class="card-meta" style="margin: 8px 0 0;"></p>
     </div>
-  </div>
+  </details>
+</div>
 
+<div class="panel">
   {% if mode == "inbox" and mode_counts and mode_counts.get("inbox") %}
     <p class="panel-note">
       В Inbox лежит всё, что ещё никто не разбирал, — включая захваченное до появления этого режима.
@@ -100,18 +137,11 @@
     </p>
   {% endif %}
 
-  {% include "_catalog_views.html" %}
-
-  {# Панель массовых действий. Появляется, только когда что-то выбрано:
-     постоянная панель на пустом выборе — это шум, который читают один раз
-     и перестают замечать. #}
-  {# Панель массовых действий. Появляется, только когда что-то выбрано:
-     постоянная панель на пустом выборе — это шум, который читают один раз
-     и перестают замечать.
-
-     hx-post висит на каждой кнопке, а не на общей обёртке: HTMX отправляет
-     значения элемента, который вызвал запрос, и на обёртке им оказался бы
-     сам контейнер, без action. #}
+  {# Панель массовых действий: появляется, только когда что-то выбрано.
+     Постоянная панель на пустом выборе — шум, который перестают замечать.
+     hx-post висит на каждой кнопке, а не на обёртке: HTMX отправляет
+     значения элемента, вызвавшего запрос, и на обёртке им оказался бы
+     контейнер, без action. #}
   <div class="bulk-bar" id="bulk-bar" hidden>
     <span class="bulk-count num"><span id="bulk-n">0</span> выбрано</span>
     <div class="bulk-actions">

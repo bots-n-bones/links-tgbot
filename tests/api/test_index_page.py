@@ -24,11 +24,14 @@ async def _make_link(
     return link
 
 
-async def test_index_page_has_title_and_search_button(db_session, authed_client):
+async def test_index_page_has_title_and_search(db_session, authed_client):
     resp = authed_client.get("/")
     assert resp.status_code == 200
     assert "<h1>Каталог</h1>" in resp.text
-    assert 'class="header-search-submit"' in resp.text
+    # Поиск по базе — поле в шапке, отправляется Enter'ом. Отдельной кнопки
+    # у него нет намеренно: он спрашивает, а не выполняет действие.
+    assert 'name="question"' in resp.text
+    assert 'class="search"' in resp.text
 
 
 async def test_index_page_shows_priority_and_tested_controls(

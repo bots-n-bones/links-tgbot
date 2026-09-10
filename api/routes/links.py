@@ -295,6 +295,29 @@ async def list_all_tags(session: AsyncSession, workspace_id: int) -> list[tuple[
     return list((await session.execute(stmt)).all())
 
 
+async def list_all_areas(session: AsyncSession, workspace_id: int) -> list[tuple[str, int]]:
+    """Area со счётчиками. В сайдбаре чип без числа бесполезен: он не
+    отвечает на «есть ли там что-нибудь» до нажатия."""
+    stmt = (
+        select(Link.area, func.count())
+        .where(Link.workspace_id == workspace_id, Link.area.is_not(None))
+        .group_by(Link.area)
+        .order_by(func.count().desc())
+    )
+    return list((await session.execute(stmt)).all())
+
+
+async def last_capture_at(session: AsyncSession, workspace_id: int) -> datetime | None:
+    """Когда в каталог последний раз что-то приехало.
+
+    Каталог наполняет бот, а не пользователь, поэтому тишина здесь значит
+    либо что в чатах ничего не кидали, либо что сломался приём — и второе
+    должно быть заметно, а не выясняться через неделю."""
+    return await session.scalar(
+        select(func.max(Link.created_at)).where(Link.workspace_id == workspace_id)
+    )
+
+
 async def list_all_chats(session: AsyncSession, workspace_id: int) -> list[tuple[str, int]]:
     """Чаты, из которых вообще что-то приходило, со счётчиками. Фильтр по
     чату уже умел query_links(), но выбрать чат в интерфейсе было нельзя —

@@ -27,7 +27,9 @@ from api.routes.links import (
     catalog_mode_counts,
     count_digest_history,
     get_link_detail,
+    last_capture_at,
     list_all_chats,
+    list_all_areas,
     list_all_senders,
     list_all_tags,
     list_catalog_views,
@@ -188,6 +190,8 @@ async def index(
         chats = await list_all_chats(session, workspace_id)
         senders = await list_all_senders(session, workspace_id)
         views = await list_catalog_views(session, workspace_id)
+        areas = await list_all_areas(session, workspace_id)
+        captured_at = await last_capture_at(session, workspace_id)
         posts_by_link = await get_posts_by_link_ids(
             session, workspace_id, [link.id for link in result.items]
         )
@@ -211,6 +215,8 @@ async def index(
                 "chats": chats,
                 "senders": senders,
                 "views": views,
+                "areas": areas,
+                "last_capture_at": captured_at,
             },
         ),
     )

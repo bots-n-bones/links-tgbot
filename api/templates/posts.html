@@ -37,7 +37,7 @@
           {% endfor %}
         </div>
       </details>
-      <form class="filters" method="get" action="/posts">
+      <form class="filters-inline" method="get" action="/posts">
         <input type="hidden" name="tag" value="{{ tag or '' }}">
         <input type="hidden" name="area" value="{{ area or '' }}">
         <select name="sort" onchange="this.form.submit()">
